@@ -1,6 +1,6 @@
 (function() {
   // Import dependencies for Node.js test environments
-  let DevGameEngine, CONTRACTS, TUTORIAL_PHASE, DEVELOPER_PHASE, BUSINESS_PHASE;
+  let DevGameEngine, CONTRACTS, TUTORIAL_PHASE, DEVELOPER_PHASE, BUSINESS_PHASE, Formulas;
   if (typeof require !== 'undefined') {
   const engineMod = require('./engine.js');
   DevGameEngine = engineMod.DevGameEngine;
@@ -8,12 +8,14 @@
   TUTORIAL_PHASE = require('./phase-tutorial.js');
   DEVELOPER_PHASE = require('./phase-developer.js');
   BUSINESS_PHASE = require('./phase-business.js');
+  Formulas = require('./formulas.js');
 } else {
   DevGameEngine = window.DevGameEngine;
   CONTRACTS = window.CONTRACTS;
   TUTORIAL_PHASE = window.TUTORIAL_PHASE;
   DEVELOPER_PHASE = window.DEVELOPER_PHASE;
   BUSINESS_PHASE = window.BUSINESS_PHASE;
+  Formulas = window.Formulas;
 }
 
 // Scrolling Text Libraries for terminal simulation
@@ -145,6 +147,36 @@ if (typeof window !== 'undefined') {
       });
     });
 
+    // Upgrades list event delegation
+    document.getElementById("upgrades-list").addEventListener("click", (e) => {
+      const card = e.target.closest(".upgrade-card");
+      if (!card) return;
+
+      if (card.classList.contains("purchased") || card.classList.contains("disabled")) {
+        return;
+      }
+
+      const id = card.dataset.id;
+      const isTutorial = card.classList.contains("tutorial-upgrade-card");
+      if (isTutorial) {
+        const upg = TUTORIAL_PHASE.upgrades.find(u => u.id === id);
+        if (upg && engine.buyTutorialUpgrade(id)) {
+          logToConsole(`[UPGRADE] Installed: ${upg.name}`, 'success-msg');
+          renderUpgradesList();
+        }
+      } else {
+        const allUpgrades = [...DEVELOPER_PHASE.upgrades, ...BUSINESS_PHASE.upgrades];
+        const upg = allUpgrades.find(u => u.id === id);
+        if (upg && engine.buyUpgrade(id)) {
+          logToConsole(`[UPGRADE] Purchased: ${upg.name}`, 'success-msg');
+          if (id === 'transition') {
+            triggerPhase2Transition();
+          }
+          renderUpgradesList();
+        }
+      }
+    });
+
     // Start UI updates
     updateProjectUIHeader();
     syncTutorialButtonsUI();
@@ -219,7 +251,7 @@ if (typeof window !== 'undefined') {
         text.innerHTML = `
           <p>Let's write Automated Tests to lock in a quality safety floor.</p>
         `;
-        btn.textContent = "Initialize Auto-Tests";
+        btn.textContent = "Initialize Unit Tests";
         clearHighlights();
       }
     });
@@ -399,26 +431,43 @@ if (typeof window !== 'undefined') {
     document.getElementById("sidebar-loc").textContent = `${Math.floor(engine.state.loc)} LOC`;
     document.getElementById("stat-loc").textContent = `${Math.floor(engine.state.loc)} LOC`;
     
-    let complexity = 1 + (engine.state.loc / 450) * (engine.state.purchasedUpgrades.includes('framework') ? 0.7 : 1.0);
+    let complexity = engine.state.complexity || 1.0;
     document.getElementById("stat-complexity").textContent = `Complexity: x${complexity.toFixed(2)}`;
     
-    let displayedBacklog = Math.floor(engine.state.backlog);
-    document.getElementById("stat-backlog").textContent = `${displayedBacklog} Points`;
-    let totalBacklog = Math.floor(engine.currentContract.backlog);
-    let backlogPercent = displayedBacklog > 0 && totalBacklog > 0 ? Math.min(100, (displayedBacklog / totalBacklog) * 100) : 0;
-    document.getElementById("progress-backlog").style.width = `${backlogPercent}%`;
+    const featPoints = Math.floor(engine.state.featurePoints);
+    document.getElementById("stat-backlog").innerHTML = `
+      <span class="feat-backlog">${featPoints}</span>
+      <span style="font-size: 0.8rem; color: var(--color-muted); font-weight: normal; margin-left: 2px;">Pts</span>
+    `;
+
+    let minLocDisplay = "-";
+    if (engine.currentContract && engine.state.featurePoints > 0) {
+      const totalFeatures = Math.round(engine.currentContract.backlog);
+      const n = totalFeatures - engine.state.featurePoints + 1;
+      const growthScale = engine.currentContract.growthScale || 0;
+      const transitionOffset = engine.currentContract.transitionOffset || 0;
+      const complexity = engine.state.complexity || 1.0;
+      
+      const minLocVal = Formulas.getMinLoc(n, growthScale, transitionOffset, complexity);
+      minLocDisplay = `${minLocVal.toFixed(1)}`;
+    } else if (engine.currentContract && engine.state.featurePoints === 0) {
+      minLocDisplay = "Completed";
+    }
+    document.getElementById("stat-min-loc").textContent = `Min LOC: ${minLocDisplay}`;
 
     // Bugs metrics (blank in Project 1, shown in Project 2 onwards)
     if (engine.state.tutorialStep < 1.8) {
-      document.getElementById("stat-hidden-bugs").textContent = "-";
-      document.getElementById("stat-revealed-bugs").textContent = "-";
+      document.getElementById("stat-bugs-found").textContent = "-";
+      document.getElementById("stat-bugs-fixable").textContent = "-";
       document.getElementById("stat-bug-rate").textContent = "Bug rate: -";
     } else {
-      document.getElementById("stat-hidden-bugs").textContent = Math.floor(engine.state.hiddenBugs);
-      document.getElementById("stat-revealed-bugs").textContent = Math.floor(engine.state.revealedBugs);
-      let baseBugRate = 0.05;
+      document.getElementById("stat-bugs-found").textContent = Math.floor(engine.state.revealedBugs);
+      document.getElementById("stat-bugs-fixable").textContent = Math.floor(engine.state.bugPoints);
+      let baseBugRate = engine.currentContract ? (engine.currentContract.baseBugRate !== undefined ? engine.currentContract.baseBugRate : 0.05) : 0.05;
+      let complexityFactor = engine.state.purchasedUpgrades.includes('framework') ? 0.7 : 1.0;
+      let complexityMultiplier = 1 + (engine.state.loc / 450) * complexityFactor;
       let linterRed = engine.state.purchasedUpgrades.includes('linter') ? 0.6 : 1.0;
-      document.getElementById("stat-bug-rate").textContent = `Bug rate: ${(baseBugRate * complexity * linterRed * 100).toFixed(1)}%`;
+      document.getElementById("stat-bug-rate").textContent = `Bug rate: ${(baseBugRate * complexityMultiplier * linterRed * 100).toFixed(1)}%`;
     }
 
     // Test coverage metrics (blank in Project 1 and 2, shown in Project 3 onwards)
@@ -540,6 +589,7 @@ if (typeof window !== 'undefined') {
       available.forEach((upg) => {
         const card = document.createElement("div");
         card.className = "upgrade-card tutorial-upgrade-card";
+        card.dataset.id = upg.id;
 
         const isPurchased = engine.state.purchasedUpgrades.includes(upg.id);
         const isAffordable = engine.state.xp >= upg.costXP;
@@ -562,14 +612,6 @@ if (typeof window !== 'undefined') {
           </button>
         `;
 
-        if (!isPurchased && isAffordable) {
-          card.addEventListener("click", () => {
-            if (engine.buyTutorialUpgrade(upg.id)) {
-              logToConsole(`[UPGRADE] Installed: ${upg.name}`, 'success-msg');
-            }
-          });
-        }
-
         container.appendChild(card);
       });
       return;
@@ -581,6 +623,7 @@ if (typeof window !== 'undefined') {
     allUpgrades.forEach((upg) => {
       const card = document.createElement("div");
       card.className = "upgrade-card";
+      card.dataset.id = upg.id;
       
       const isPurchased = engine.state.purchasedUpgrades.includes(upg.id);
       const isAffordable = engine.state.cash >= upg.costCash && engine.state.xp >= upg.costXP;
@@ -605,17 +648,6 @@ if (typeof window !== 'undefined') {
           ${isPurchased ? 'Bought' : costStr}
         </button>
       `;
-
-      if (!isPurchased && isAffordable) {
-        card.addEventListener("click", () => {
-          if (engine.buyUpgrade(upg.id)) {
-            logToConsole(`[UPGRADE] Purchased: ${upg.name}`, 'success-msg');
-            if (upg.id === 'transition') {
-              triggerPhase2Transition();
-            }
-          }
-        });
-      }
 
       container.appendChild(card);
     });
@@ -695,7 +727,7 @@ if (typeof window !== 'undefined') {
       overlay.style.display = 'none';
       syncTutorialButtonsUI();
       highlightTaskButton('autotest');
-      logToConsole("[SYSTEM] Course Unit 5: Automated Testing. Click '🤖 Auto-Test' to setup a floor.", "success-msg");
+      logToConsole("[SYSTEM] Course Unit 5: Automated Testing. Click '🤖 Unit Tests' to setup a floor.", "success-msg");
     } 
     
     else if (engine.state.tutorialStep === 6.5) {

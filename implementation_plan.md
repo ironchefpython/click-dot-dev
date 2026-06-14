@@ -1,68 +1,72 @@
-# Implementation Plan - Phase 1 Loop Enhancements
+# Implementation Plan - Deterministic Engine Formulas & Tutorial Balance
 
-We will enhance the Phase 1 loop of the software developer game to improve gameplay balance, add a project shipping loop, support multi-currency upgrades (Cash & XP), and introduce a simulator class for automated play-testing.
+We will transition the Solo Coder game engine from a probabilistic model (which relies on `Math.random()` and requires slow simulation-based calibration sweeps) to a fully deterministic model using fractional progress accumulators. We will also increase the LOC requirements (growth scale) for tutorial projects 2 and 3.
 
 ## Proposed Changes
 
-### 1. UI & Visual Polish
-*   **Modal Transparency:** Adjust `.tutorial-overlay` background transparency to 90% (`rgba(2, 6, 23, 0.1)` with a light backdrop-filter blur) so the IDE remains visible during tutorial alerts.
-*   **Header Stats:** Add a **Cash ($)** counter alongside the **Knowledge (XP)** badge.
-*   **"Ship Project" Button:** Add a prominent button to the codebase metrics panel. It will be enabled once the active project's backlog is `0` and known bugs are `0`. Clicking it pays the user, grants XP, and loads a new contract.
+### 1. Tutorial Project Balance (Increased Growth Scale)
+We will increase the LOC requirements of tutorial projects 2 and 3 to make them feel more substantial:
+*   **Project 2 (Calculator App):** 
+    *   Set `growthScale: 5` (was `0`)
+    *   Set `transitionOffset: 2` (was `0`)
+*   **Project 3 (Todo List):** 
+    *   Set `growthScale: 8` (was `0`)
+    *   Set `transitionOffset: 3` (was `0`)
 
-### 2. Math & Logic Refinement
-*   **Logarithmic Testing Curve:** Adjust manual test speed relative to current coverage:
-    $$\Delta Coverage = BASE\_TEST\_SPEED \times \eta \times \frac{100 - Coverage}{100} \times dt$$
-    This halves the testing speed at 50% coverage, quarters it at 75%, and asymptotes cleanly.
-*   **Value Formula (No Backlog Penalty):**
-    $$Value = LOC \times \left(1 - \frac{HiddenBugs \times 4.0 + RevealedBugs \times 1.5}{LOC}\right)$$
-    *This ensures debugging (which increases backlog) does not decrease value, and hidden bugs penalize value 2.6x more than revealed ones.*
-*   **XP Generation:** XP is only accumulated when the player is actively working (`activeTask !== 'idle'`).
+### 2. Deterministic Formulas (Progress Accumulators)
+We will replace all `Math.random()` calls in the tick handler of [engine.js](file:///app/engine.js) with deterministic accumulators stored in the game state. Every time we tick, we add a fractional increment to the respective accumulator. When it crosses `1.0`, the event fires.
 
-### 3. Story & Tutorial Enhancements
-*   **Start State (Learn to Code Online):** The game starts with an online coding course instead of a commercial project.
-*   **Skip Tutorial Button:** Allow players to bypass the tutorial. Skipping unlocks all actions and upgrades immediately, starts them with $10 cash, and launches their first freelance bakery contract.
-*   **Project Shipping Loop:** When the tutorial exercises are complete, the user accepts their first commercial contract. Shipping a project clears the local code stats (retains the test floor), pays Cash + XP, and unlocks a queue of increasingly complex contracts (Bakery, E-Commerce, Chatroom, SaaS CRM, and procedurally generated apps).
+The accumulators to be added to the engine state:
+1.  `bugIntroProgress` (for introducing new bugs when coding)
+2.  `revealedBugProgress` (for determining if an introduced bug is hidden vs. revealed)
+3.  `bugfixClearProgress` (for clearing a bugfix point when coding)
+4.  `featureCompleteProgress` (for completing a feature point when coding)
+5.  `revealProgress` (for revealing a hidden bug during manual testing)
+6.  `debugProgress` (for squashing a revealed bug during debugging)
+7.  `bugfixBacklogProgress` (for determining if a squashed bug creates a backlog bugfix point)
 
-### 4. Upgrade Revamp
-Upgrades now require Cash, XP, or both:
-*   *Mechanical Keyboard:* $15 + 30 XP
-*   *French Press Coffee:* $30 + 50 XP
-*   *ESLint Config:* $50 + 100 XP
-*   *AI Tab Autocomplete:* $120 + 250 XP
-*   *Modern Web Framework:* $200 + 400 XP
-*   *Incorporate Consultancy:* $500 + 1000 XP
+#### Accumulator Reset
+All accumulators will be initialized to `0.0` inside the `loadContract(index)` method of the engine, ensuring a clean state for each project.
 
-### 5. Automated Play-testing (Simulator)
-We will refactor the game code into a pure state-machine class `DevGameEngine` that runs independently of the DOM.
-*   Expose `window.createSimulator()` or `DevGameEngine` in the browser console.
-*   Support importable CommonJS modules for Node.js.
-*   Create a scratch script `test_simulator.js` to simulate 100 ticks of gameplay (coding, testing, debugging) to verify math correctness in the shell.
+#### Conversion of Random Logic to Accumulators
+
+| Event | Current Probabilistic Code | Suggested Deterministic Code |
+| :--- | :--- | :--- |
+| **Bug Intro** | `if (Math.random() < bugIntroProb)` | `this.state.bugIntroProgress += bugIntroProb;`<br>`if (this.state.bugIntroProgress >= 1.0) {`<br>&nbsp;&nbsp;`this.state.bugIntroProgress -= 1.0;`<br>&nbsp;&nbsp;`/* Trigger Bug Placement */`<br>`}` |
+| **Bug Placement** | `if (Math.random() < foundProb)` | `this.state.revealedBugProgress += foundProb;`<br>`if (this.state.revealedBugProgress >= 1.0) {`<br>&nbsp;&nbsp;`this.state.revealedBugProgress -= 1.0;`<br>&nbsp;&nbsp;`this.state.revealedBugs++;`<br>`} else {`<br>&nbsp;&nbsp;`this.state.hiddenBugs++;`<br>`}` |
+| **Bugfix Clear** | `if (Math.random() < bugfixClearProb)` | `this.state.bugfixClearProgress += bugfixClearProb;`<br>`if (this.state.bugfixClearProgress >= 1.0) {`<br>&nbsp;&nbsp;`this.state.bugfixClearProgress -= 1.0;`<br>&nbsp;&nbsp;`this.state.bugPoints = Math.max(0, this.state.bugPoints - 1);`<br>`}` |
+| **Feature Complete** | `if (Math.random() < featureCompleteProb)` | `this.state.featureCompleteProgress += featureCompleteProb;`<br>`if (this.state.featureCompleteProgress >= 1.0) {`<br>&nbsp;&nbsp;`this.state.featureCompleteProgress -= 1.0;`<br>&nbsp;&nbsp;`this.state.featurePoints = Math.max(0, this.state.featurePoints - 1);`<br>`}` |
+| **Hidden Bug Reveal** | `if (Math.random() < pReveal)` | `this.state.revealProgress += pReveal;`<br>`if (this.state.revealProgress >= 1.0) {`<br>&nbsp;&nbsp;`this.state.revealProgress -= 1.0;`<br>&nbsp;&nbsp;`this.state.hiddenBugs = Math.max(0, this.state.hiddenBugs - 1);`<br>&nbsp;&nbsp;`this.state.revealedBugs++;`<br>`}` |
+| **Bug Squash** | `if (Math.random() < pDebug)` | `this.state.debugProgress += pDebug;`<br>`if (this.state.debugProgress >= 1.0) {`<br>&nbsp;&nbsp;`this.state.debugProgress -= 1.0;`<br>&nbsp;&nbsp;`this.state.revealedBugs = Math.max(0, this.state.revealedBugs - 1);`<br>&nbsp;&nbsp;`/* Trigger Post-Debug Split */`<br>`}` |
+| **Post-Debug Split** | `if (Math.random() < 0.30)` | `this.state.bugfixBacklogProgress += 0.70;`<br>`if (this.state.bugfixBacklogProgress >= 1.0) {`<br>&nbsp;&nbsp;`this.state.bugfixBacklogProgress -= 1.0;`<br>&nbsp;&nbsp;`this.state.bugPoints++;`<br>`} else {`<br>&nbsp;&nbsp;`/* Immediately resolved (no action) */`<br>`}` |
+
+### 3. Benefits & Speeding up Calibration
+*   **Single Simulation Runs:** Because the simulation is completely deterministic, we no longer need to average across multiple runs (e.g., `runs = 100`). A single simulation run is perfectly accurate.
+*   **Instant Calibration Script:** The calibration script will take less than 50 milliseconds to run a full parameter search, as there is zero noise or variance.
+*   **Deterministic Tests:** Jest unit tests will no longer depend on choosing specific mock PRNG seeds, as the results are natively deterministic.
 
 ---
 
-## File Changes
+## Proposed Changes by File
 
-#### [MODIFY] [index.html](file:///app/index.html)
-Add Cash status gauge, "Ship Project" button, and "Skip Tutorial" button to modal layout.
+### [formulas.js](file:///app/formulas.js)
+*   No changes to existing math functions are strictly required since they calculate rates/probabilities which now map directly to the accumulator increments.
 
-#### [MODIFY] [style.css](file:///app/style.css)
-Update modal overlay opacity, styling for ship buttons, secondary button styles, and cash layout.
+### [phase-tutorial.js](file:///app/phase-tutorial.js)
+*   Update Project 2 (`course-calc`) and Project 3 (`course-todo`) with the new `growthScale` and `transitionOffset` values.
+*   We will calibrate `featureCompleteProb` and `bugfixClearProb` for Projects 2 and 3 using the deterministic calibration script, then update their values.
 
-#### [MODIFY] [game.js](file:///app/game.js)
-Extract `DevGameEngine` core class, implement logarithmic testing, updated value formula, cash/XP upgrades, shipping loop, and tutorial progression.
+### [engine.js](file:///app/engine.js)
+*   Initialize progress accumulator state properties (`bugIntroProgress`, `revealedBugProgress`, `bugfixClearProgress`, `featureCompleteProgress`, `revealProgress`, `debugProgress`, `bugfixBacklogProgress`) to `0.0` in the state initializer and in `loadContract()`.
+*   Replace all `Math.random()` statements in the `tick()` function with the suggested progress accumulator logic.
 
-#### [NEW] [test_simulator.js](file:///app/.gemini/antigravity-cli/brain/a31e8f9e-72bb-4184-8254-467d6672ef5c/scratch/test_simulator.js)
-Node.js test script to simulate gameplay ticks and print statistics.
+### [calibrate_prob.js](file:///app/calibrate_prob.js)
+*   Update the simulation logic to run exactly 1 run (no averaging needed) and find the calibrated configurations.
 
 ---
 
 ## Verification Plan
 
-### Automated Test
-*   Run `node test_simulator.js` to verify the state transitions, focus curves, bug generation, and shipping calculations.
-
-### Manual Verification
-*   Open http://localhost:37999.
-*   Verify overlay is transparent.
-*   Test the "Skip Tutorial" flow.
-*   Test project shipping and check if a new contract loads with fresh backlog.
+### Automated Tests
+*   Run the updated `calibrate_prob.js` to find the exact parameters.
+*   Verify that `npm test` runs and passes, validating that tutorial completion times match the 20% margin targets.

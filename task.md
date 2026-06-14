@@ -1,7 +1,14 @@
-# Task Checklist - Phase 1 Loop
+# Task Checklist - Deterministic Transition & Tutorial Balance
 
-- [x] Create `index.html` structure with IDE layouts, gauges, and task selectors
-- [x] Create `style.css` with dark IDE aesthetics, layout styles, and focus/fatigue animations
-- [x] Create `game.js` with state logic, focus/fatigue formulas, task behaviors, and the 5-step tutorial flow
-- [x] Conduct manual verification of task constraints, focus/fatigue rates, and value curves
-- [x] Finalize walkthrough documentation
+- [x] Update growth scale values for Projects 2 and 3 in `phase-tutorial.js`
+- [x] Initialize accumulators in `engine.js` (`bugIntroProgress`, `revealedBugProgress`, `bugfixClearProgress`, `featureCompleteProgress`, `revealProgress`, `debugProgress`, `bugfixBacklogProgress`)
+- [x] Update `engine.js` tick logic to use deterministic progress accumulators instead of `Math.random()`
+- [x] Update `calibrate_prob.js` to run deterministically (1 iteration per configuration, no averages)
+- [x] Run `calibrate_prob.js` to find the new calibrated tutorial parameters
+- [x] Update `phase-tutorial.js` with the calibrated parameters
+- [x] Update `game.test.js` to remove mock random seed overrides (since the engine is fully deterministic, we no longer need the math random override)
+- [x] Run `npm test` and verify all tests pass
+- [x] Make refactoring complexity reduction proportional to the current complexity
+- [x] Replace the backlog card progress bar with the minimum LOC required to satisfy the next feature point
+- [x] Update the bugs UI card layout to say "Bugs (Found / Fixable)" displaying `revealedBugs` / `bugPoints`
+- [x] Remove bugfix points visual from the backlog UI card (displaying only feature points)

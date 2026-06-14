@@ -1004,3 +1004,20 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-muted);
 }
+
+.feat-backlog {
+  color: var(--color-code);
+  text-shadow: 0 0 5px rgba(16, 185, 129, 0.3);
+  font-weight: bold;
+}
+
+.bug-backlog {
+  color: var(--color-debug);
+  text-shadow: 0 0 5px rgba(249, 115, 22, 0.3);
+  font-weight: bold;
+}
+
+.backlog-slash {
+  color: var(--color-muted);
+  margin: 0 4px;
+}

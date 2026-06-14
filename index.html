@@ -144,7 +144,7 @@
             </label>
             <label class="task-radio-btn locked task-autotest" id="label-autotest">
               <input type="radio" name="active-task" value="autotest" disabled>
-              <span class="radio-label">🤖 Auto-Test</span>
+              <span class="radio-label">🤖 Unit Tests</span>
             </label>
           </div>
         </div>
@@ -159,18 +159,16 @@
               <div id="stat-complexity" class="metric-sub">Complexity: x1.00</div>
             </div>
             <div class="metric-card">
-              <div class="metric-label">Backlog</div>
+              <div class="metric-label">Backlog Story Points</div>
               <div id="stat-backlog" class="metric-value">0 Points</div>
-              <div class="progress-bar-container">
-                <div id="progress-backlog" class="progress-bar orange" style="width: 0%;"></div>
-              </div>
+              <div id="stat-min-loc" class="metric-sub">Min LOC: -</div>
             </div>
             <div class="metric-card">
-              <div class="metric-label">Bugs (Hidden / Found)</div>
+              <div class="metric-label">Bugs (Found / Fixable)</div>
               <div class="metric-value">
-                <span id="stat-hidden-bugs" class="bug-hidden">0</span>
+                <span id="stat-bugs-found" class="bug-revealed">0</span>
                 <span class="separator">/</span>
-                <span id="stat-revealed-bugs" class="bug-revealed">0</span>
+                <span id="stat-bugs-fixable" class="bug-backlog">0</span>
               </div>
               <div id="stat-bug-rate" class="metric-sub">Bug rate: 5.0%</div>
             </div>
@@ -229,6 +227,7 @@
   <script src="phase-tutorial.js"></script>
   <script src="phase-developer.js"></script>
   <script src="phase-business.js"></script>
+  <script src="formulas.js"></script>
   <script src="engine.js"></script>
   <script src="main.js"></script>
 </body>

@@ -187,6 +187,60 @@ describe('Solo Coder Game - UI Binding & Integration Tests', () => {
     jest.useRealTimers();
   });
 
+  test('should unlock, render, purchase, and apply effects for tutorial upgrades', () => {
+    jest.useFakeTimers();
+    require('./main.js');
+
+    const domEvent = new Event('DOMContentLoaded');
+    document.dispatchEvent(domEvent);
+
+    const upgradesList = document.getElementById('upgrades-list');
+
+    // Trigger first UI loop tick to populate initial empty text
+    jest.advanceTimersByTime(50);
+
+    // No upgrades should be rendered yet since hello-world is not shipped (contractIndex is 0)
+    expect(upgradesList.innerHTML).toContain('Ship your first project to unlock upgrades');
+
+    // Simulate shipping Hello World to advance to calculator app (contractIndex = 1)
+    window.engine.state.xp = 15; // Give enough XP to afford the upgrade (cost is 8 XP)
+    window.engine.state.contractIndex = 1;
+    window.engine.state.tutorialStep = 1.8;
+
+    // Trigger UI render tick
+    jest.advanceTimersByTime(50);
+
+    // Now oss-ide should be rendered in the upgrades list
+    expect(upgradesList.innerHTML).toContain('Open-Source IDE');
+    expect(upgradesList.innerHTML).toContain('8 XP');
+
+    // Find the upgrade card element in the JSDOM
+    const cards = document.querySelectorAll('.tutorial-upgrade-card');
+    const ossCard = Array.from(cards).find(c => c.innerHTML.includes('Open-Source IDE'));
+    expect(ossCard).toBeDefined();
+    expect(ossCard.classList.contains('disabled')).toBe(false);
+
+    // Click the card to purchase
+    ossCard.click();
+
+    // Verify it was purchased in the engine
+    expect(window.engine.state.purchasedUpgrades).toContain('oss-ide');
+    // Verify XP was deducted (15 - 8 = 7 XP)
+    expect(window.engine.state.xp).toBe(7);
+
+    // Trigger UI render tick to update render state
+    jest.advanceTimersByTime(50);
+    
+    // Query the DOM again to avoid stale element reference after rebuild
+    const updatedCards = document.querySelectorAll('.tutorial-upgrade-card');
+    const updatedOssCard = Array.from(updatedCards).find(c => c.innerHTML.includes('Open-Source IDE'));
+    
+    // Verify that the card displays "Installed"
+    expect(updatedOssCard.innerHTML).toContain('Installed');
+    
+    jest.useRealTimers();
+  });
+
   test('should blank out bugs and test coverage UI metrics in early tutorial steps', () => {
     jest.useFakeTimers();
     require('./main.js');
@@ -197,8 +251,8 @@ describe('Solo Coder Game - UI Binding & Integration Tests', () => {
     // Initial step is 0 (Project 1)
     jest.advanceTimersByTime(50);
 
-    const hiddenBugsEl = document.getElementById('stat-hidden-bugs');
-    const revealedBugsEl = document.getElementById('stat-revealed-bugs');
+    const hiddenBugsEl = document.getElementById('stat-bugs-found');
+    const revealedBugsEl = document.getElementById('stat-bugs-fixable');
     const coverageEl = document.getElementById('stat-coverage');
 
     // Both should be blank (displayed as "-")

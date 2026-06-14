@@ -1,15 +1,17 @@
 (function() {
   // Load phase data (supports both Node.js environment and browser globals)
-  let TUTORIAL_PHASE, DEVELOPER_PHASE, BUSINESS_PHASE;
+  let TUTORIAL_PHASE, DEVELOPER_PHASE, BUSINESS_PHASE, Formulas;
   if (typeof require !== 'undefined') {
-  TUTORIAL_PHASE = require('./phase-tutorial.js');
-  DEVELOPER_PHASE = require('./phase-developer.js');
-  BUSINESS_PHASE = require('./phase-business.js');
-} else {
-  TUTORIAL_PHASE = window.TUTORIAL_PHASE;
-  DEVELOPER_PHASE = window.DEVELOPER_PHASE;
-  BUSINESS_PHASE = window.BUSINESS_PHASE;
-}
+    TUTORIAL_PHASE = require('./phase-tutorial.js');
+    DEVELOPER_PHASE = require('./phase-developer.js');
+    BUSINESS_PHASE = require('./phase-business.js');
+    Formulas = require('./formulas.js');
+  } else {
+    TUTORIAL_PHASE = window.TUTORIAL_PHASE;
+    DEVELOPER_PHASE = window.DEVELOPER_PHASE;
+    BUSINESS_PHASE = window.BUSINESS_PHASE;
+    Formulas = window.Formulas;
+  }
 
 // Combine contract data and upgrades from phases
 const CONTRACTS = [...TUTORIAL_PHASE.contracts, ...DEVELOPER_PHASE.contracts];
@@ -52,6 +54,7 @@ class DevGameEngine {
       testCoverage: 0,
       testCoverageFloor: 0,
       minLoc: 0,
+      complexity: 1.0,
       activeTask: 'idle',
       taskFatigue: {
         idle: 0,
@@ -64,7 +67,14 @@ class DevGameEngine {
       purchasedUpgrades: [],
       tutorialStep: 0, // 0: Start popup, 1: Code course, 2: Test course, 3: Debug course, 4: Refactor course, 5: Autotest course, 6: Completed
       codeValue: 0,
-      contractIndex: 0
+      contractIndex: 0,
+      bugIntroProgress: 0.0,
+      revealedBugProgress: 0.0,
+      bugfixClearProgress: 0.0,
+      featureCompleteProgress: 0.0,
+      revealProgress: 0.0,
+      debugProgress: 0.0,
+      bugfixBacklogProgress: 0.0
     };
     
     // Ensure purchasedUpgrades is stored as an array in state for serialization compatibility,
@@ -74,10 +84,13 @@ class DevGameEngine {
     }
 
     if (this.state.featurePoints === undefined) {
-      this.state.featurePoints = this.state.backlog;
+      this.state.featurePoints = Math.round(this.state.backlog);
     }
     if (this.state.bugPoints === undefined) {
       this.state.bugPoints = 0;
+    }
+    if (this.state.complexity === undefined) {
+      this.state.complexity = 1.0;
     }
 
     this.currentContract = null;
@@ -127,16 +140,26 @@ class DevGameEngine {
       }
     }
 
-    this.state.featurePoints = this.currentContract.backlog;
+    this.state.featurePoints = Math.round(this.currentContract.backlog);
     this.state.bugPoints = 0;
     this.state.backlog = this.state.featurePoints + this.state.bugPoints;
     this.state.loc = 0;
     this.state.hiddenBugs = 0;
     this.state.revealedBugs = 0;
     this.state.minLoc = 0;
+    this.state.complexity = this.currentContract.complexity || 1.0;
     // Set initial test coverage to the current floor
     this.state.testCoverage = this.state.testCoverageFloor;
     this.state.activeTask = 'idle';
+
+    // Reset progress accumulators for deterministic behavior
+    this.state.bugIntroProgress = 0.0;
+    this.state.revealedBugProgress = 0.0;
+    this.state.bugfixClearProgress = 0.0;
+    this.state.featureCompleteProgress = 0.0;
+    this.state.revealProgress = 0.0;
+    this.state.debugProgress = 0.0;
+    this.state.bugfixBacklogProgress = 0.0;
   }
 
   selectTask(taskName) {
@@ -148,7 +171,12 @@ class DevGameEngine {
     const currentSum = this.state.featurePoints + this.state.bugPoints;
     if (this.state.backlog !== currentSum) {
       const diff = this.state.backlog - currentSum;
-      this.state.featurePoints = Math.max(0, this.state.featurePoints + diff);
+      this.state.featurePoints = Math.max(0, Math.round(this.state.featurePoints + diff));
+      if (this.state.backlog <= 0.05) {
+        this.state.featurePoints = 0;
+        this.state.bugPoints = 0;
+      }
+      this.state.backlog = this.state.featurePoints + this.state.bugPoints;
     }
 
     const prevRank = this.getRank();
@@ -217,12 +245,11 @@ class DevGameEngine {
       }
     }
 
-    // 4. Code value calculation
-    // Value = LOC * (1 - penalty), where hidden bugs penalize 4x and revealed penalize 1.5x
-    let hiddenPenalty = this.state.hiddenBugs * 4.0;
-    let revealedPenalty = this.state.revealedBugs * 1.5;
-    let totalPenalty = this.state.loc > 0 ? (hiddenPenalty + revealedPenalty) / this.state.loc : 0;
-    let potentialValue = this.state.loc * Math.max(0.05, 1.0 - totalPenalty);
+    // 4. Code value calculation: proportional to feature points completed and reduced by total bugs
+    let totalFeatures = this.currentContract ? Math.round(this.currentContract.backlog) : 0;
+    let completedFeatures = totalFeatures - this.state.featurePoints;
+    let totalBugs = this.state.hiddenBugs + this.state.revealedBugs;
+    let potentialValue = Formulas.calculateCodeValue(completedFeatures, totalBugs);
 
     if (this.currentContract && this.currentContract.isCourse) {
       this.state.codeValue = 0;
@@ -317,82 +344,150 @@ class DevGameEngine {
     const tutGitAutoBoost = hasTutGit ? 1.25 : 1.0;
     const tutGitFloorCap = hasTutGit ? 95 : 90;
 
-    // Apply touch-typing focus modifier directly to kFocusModifier effect
-    // (already computed before processTaskAction, pass as param via efficiency — no re-calc here)
     if (task === 'code') {
       if (this.state.backlog <= 0) return false;
 
-      const difficulty = this.currentContract ? (this.currentContract.difficulty || (this.currentContract.isCourse ? 1.0 : 10.0)) : 10.0;
-
       let speedMultiplier = this.getCodingSpeedMultiplier();
       let newLoc = BASE_CODE_SPEED * efficiency * keyboardBoost * tutCodeBoost * speedMultiplier * dt;
-      // Cap write speed by backlog limit (in terms of LOC)
-      newLoc = Math.min((this.state.featurePoints + this.state.bugPoints) * difficulty, newLoc);
-      
-      let reducedPoints = newLoc / difficulty;
-      if (this.state.bugPoints > 0) {
-        let bugReduction = Math.min(this.state.bugPoints, reducedPoints);
-        this.state.bugPoints -= bugReduction;
-        reducedPoints -= bugReduction;
+
+      // For Hello World, cap loc at exactly 4.0 to make it perfectly deterministic
+      if (this.currentContract && this.currentContract.id === 'course-hello') {
+        newLoc = Math.min(4.0 - this.state.loc, newLoc);
+        if (newLoc <= 0) return false;
       }
-      if (reducedPoints > 0) {
-        this.state.featurePoints = Math.max(0, this.state.featurePoints - reducedPoints);
-      }
-      this.state.backlog = this.state.featurePoints + this.state.bugPoints;
-      
+
       let prevLoc = this.state.loc;
       this.state.loc += newLoc;
 
-      // Geometric minLoc increase
-      const ratio = 1.15;
-      const complexity = this.currentContract ? this.currentContract.complexity : 1.0;
-      let dMinLoc = newLoc * 0.55 * Math.pow(ratio, -this.state.featurePoints * complexity);
-      this.state.minLoc += dMinLoc;
-
-      if (this.state.loc > 0 && newLoc > 0) {
-        let coveredLoc = prevLoc * (this.state.testCoverage / 100);
-        this.state.testCoverage = (coveredLoc / this.state.loc) * 100;
-        this.state.testCoverage = Math.max(this.state.testCoverageFloor, this.state.testCoverage);
+      // Coverage dilution
+      if (prevLoc > 0 && newLoc > 0) {
+        this.state.testCoverage = Formulas.calculateCoverageDilution(prevLoc, newLoc, this.state.testCoverage);
+        this.state.testCoverageFloor = Formulas.calculateCoverageDilution(prevLoc, newLoc, this.state.testCoverageFloor);
       }
 
-      // Bug creation
-      let baseBugRate = 0.05;
-      let complexityMultiplier = 1 + (this.state.loc / 450) * complexityFactor;
-      let actualBugRate = baseBugRate * complexityMultiplier * linterReduction;
-      let newBugs = newLoc * actualBugRate;
+      // Calculate completed integer LOC boundaries
+      let prevFloor = Math.floor(prevLoc);
+      let newFloor = Math.floor(this.state.loc);
+      let completedIntegers = newFloor - prevFloor;
 
-      let revealedRatio = this.state.tutorialStep < 2.8 ? 1.0 : (this.state.testCoverage / 100);
-      this.state.hiddenBugs += newBugs * (1 - revealedRatio);
-      this.state.revealedBugs += newBugs * revealedRatio;
+      const difficulty = this.currentContract ? (this.currentContract.difficulty || (this.currentContract.isCourse ? 1.0 : 10.0)) : 10.0;
+      const baseBugRate = this.currentContract ? (this.currentContract.baseBugRate !== undefined ? this.currentContract.baseBugRate : 0.05) : 0.05;
+      const growthScale = this.currentContract ? (this.currentContract.growthScale !== undefined ? this.currentContract.growthScale : 1443) : 1443;
+      const transitionOffset = this.currentContract ? (this.currentContract.transitionOffset !== undefined ? this.currentContract.transitionOffset : 9) : 9;
+
+      if (completedIntegers > 0) {
+        for (let i = 0; i < completedIntegers; i++) {
+          // 1. Increase complexity using formulas.js increment
+          this.state.complexity += Formulas.getComplexityIncrement();
+
+          // 2. Bug introduction check
+          let complexityMultiplier = 1 + (this.state.loc / 450) * complexityFactor;
+          let bugIntroProb = Formulas.calculateBugIntroProb(baseBugRate, this.state.complexity * complexityMultiplier, linterReduction);
+          
+          // Tutorial safety overrides
+          if (this.currentContract && this.currentContract.id === 'course-hello') {
+            bugIntroProb = 0; // Hello World has no bugs
+          } else if (this.state.tutorialStep === 1.8 && this.state.revealedBugs === 0) {
+            bugIntroProb = 1.0; // Guarantee first bug in Calculator App
+          } else if (this.state.tutorialStep === 2.8 && this.state.hiddenBugs === 0) {
+            bugIntroProb = 1.0; // Guarantee first hidden bug in Todo List
+          }
+
+          // Accumulator for bug introduction
+          this.state.bugIntroProgress = (this.state.bugIntroProgress || 0.0) + bugIntroProb;
+          if (this.state.bugIntroProgress >= 1.0) {
+            this.state.bugIntroProgress -= 1.0;
+            
+            // Bug placement (hidden vs revealed)
+            let foundProb = this.state.tutorialStep < 2.8 ? 1.0 : (this.state.testCoverageFloor / 100);
+            this.state.revealedBugProgress = (this.state.revealedBugProgress || 0.0) + foundProb;
+            if (this.state.revealedBugProgress >= 1.0) {
+              this.state.revealedBugProgress -= 1.0;
+              this.state.revealedBugs++;
+            } else {
+              this.state.hiddenBugs++;
+            }
+          }
+
+          // 3. Backlog clearing
+          if (this.state.bugPoints > 0) {
+            let bugfixClearProb = this.currentContract ? (this.currentContract.bugfixClearProb !== undefined ? this.currentContract.bugfixClearProb : (1.0 / difficulty)) : (1.0 / difficulty);
+            
+            this.state.bugfixClearProgress = (this.state.bugfixClearProgress || 0.0) + bugfixClearProb;
+            if (this.state.bugfixClearProgress >= 1.0) {
+              this.state.bugfixClearProgress -= 1.0;
+              this.state.bugPoints = Math.max(0, this.state.bugPoints - 1);
+            }
+          } else if (this.state.featurePoints > 0) {
+            let totalFeatures = this.currentContract ? Math.round(this.currentContract.backlog) : 0;
+            let n = totalFeatures - this.state.featurePoints + 1;
+            
+            // Calculate minimum LOC threshold using formulas.js
+            let minLocVal = Formulas.getMinLoc(n, growthScale, transitionOffset, this.state.complexity);
+            let currentIntLoc = prevFloor + i + 1;
+
+            if (currentIntLoc >= minLocVal) {
+              let featureCompleteProb = this.currentContract ? (this.currentContract.featureCompleteProb !== undefined ? this.currentContract.featureCompleteProb : (1.0 / difficulty)) : (1.0 / difficulty);
+              
+              // Hello World override to be 100% deterministic
+              if (this.currentContract && this.currentContract.id === 'course-hello') {
+                featureCompleteProb = 1.0;
+              }
+
+              this.state.featureCompleteProgress = (this.state.featureCompleteProgress || 0.0) + featureCompleteProb;
+              if (this.state.featureCompleteProgress >= 1.0) {
+                this.state.featureCompleteProgress -= 1.0;
+                this.state.featurePoints = Math.max(0, this.state.featurePoints - 1);
+              }
+            }
+          }
+        }
+      }
+
+      let totalFeatures = this.currentContract ? Math.round(this.currentContract.backlog) : 0;
+      let completedFeatures = totalFeatures - this.state.featurePoints;
+      this.state.minLoc = Formulas.getMinLoc(completedFeatures, growthScale, transitionOffset, this.state.complexity);
+
+      this.state.backlog = this.state.featurePoints + this.state.bugPoints;
       return true;
     } 
     
     else if (task === 'test') {
-      // Logarithmic curve manual testing: rate is proportional to (100 - currentCoverage) / 100
-      let coverageRemainingRatio = (100 - this.state.testCoverage) / 100;
-      let testSpeed = BASE_TEST_SPEED * efficiency * tutDebugTestBoost * coverageRemainingRatio * dt;
+      let testSpeed = Formulas.calculateManualTestSpeed(BASE_TEST_SPEED, efficiency, tutDebugTestBoost, this.state.testCoverage, this.state.loc) * dt;
       this.state.testCoverage = Math.min(100, this.state.testCoverage + testSpeed * 100);
 
-      // Reveal bugs
-      let revealRate = 0.15 * efficiency * dt;
-      let bugsFound = Math.min(this.state.hiddenBugs, this.state.hiddenBugs * revealRate);
-      this.state.hiddenBugs -= bugsFound;
-      this.state.revealedBugs += bugsFound;
+      // Reveal bugs deterministically
+      if (this.state.hiddenBugs > 0) {
+        let pReveal = Formulas.calculateRevealProb(efficiency, tutDebugTestBoost, dt);
+        this.state.revealProgress = (this.state.revealProgress || 0.0) + pReveal;
+        if (this.state.revealProgress >= 1.0) {
+          this.state.revealProgress -= 1.0;
+          this.state.hiddenBugs = Math.max(0, this.state.hiddenBugs - 1);
+          this.state.revealedBugs++;
+        }
+      }
       return true;
     } 
     
     else if (task === 'debug') {
       if (this.state.revealedBugs <= 0) return false;
 
-      let debugSpeed = BASE_DEBUG_SPEED * efficiency * tutDebugTestBoost * dt;
-      let bugsFixed = Math.min(this.state.revealedBugs, debugSpeed);
-      this.state.revealedBugs -= bugsFixed;
-
-      // Debugging increases backlog (revealing structural tickets)
-      let backlogAdd = (this.currentContract && this.currentContract.isCourse) ? 0.5 : 3.5;
-      let addedBugPoints = bugsFixed * backlogAdd;
-      this.state.bugPoints += addedBugPoints;
-      this.state.backlog = this.state.featurePoints + this.state.bugPoints;
+      let pDebug = Formulas.calculateDebugProb(efficiency, tutDebugTestBoost, dt);
+      this.state.debugProgress = (this.state.debugProgress || 0.0) + pDebug;
+      if (this.state.debugProgress >= 1.0) {
+        this.state.debugProgress -= 1.0;
+        this.state.revealedBugs = Math.max(0, this.state.revealedBugs - 1);
+        
+        // Deterministic split outcome
+        this.state.bugfixBacklogProgress = (this.state.bugfixBacklogProgress || 0.0) + 0.70;
+        if (this.state.bugfixBacklogProgress >= 1.0) {
+          this.state.bugfixBacklogProgress -= 1.0;
+          this.state.bugPoints++;
+        } else {
+          // Immediately resolved!
+        }
+        this.state.backlog = this.state.featurePoints + this.state.bugPoints;
+      }
       return true;
     } 
     
@@ -403,15 +498,22 @@ class DevGameEngine {
       let refactorAmt = Math.min(this.state.loc - this.state.minLoc, refactorSpeed);
       this.state.loc -= refactorAmt;
 
+      // Reduce complexity proportional to refactored LOC and current complexity
+      const initialComplexity = this.currentContract ? (this.currentContract.complexity || 1.0) : 1.0;
+      this.state.complexity = Math.max(initialComplexity, this.state.complexity - Formulas.getComplexityIncrement() * refactorAmt * this.state.complexity);
+
       this.state.testCoverage = Math.max(this.state.testCoverageFloor, this.state.testCoverage - refactorAmt * 0.15);
       return true;
     } 
     
     else if (task === 'autotest') {
-      if (this.state.testCoverageFloor >= this.state.testCoverage || this.state.testCoverageFloor >= tutGitFloorCap) return false;
+      if (this.state.testCoverageFloor >= tutGitFloorCap) return false;
 
-      let autoSpeed = BASE_AUTOTEST_SPEED * efficiency * tutGitAutoBoost * dt;
-      this.state.testCoverageFloor = Math.min(this.state.testCoverage, Math.min(tutGitFloorCap, this.state.testCoverageFloor + autoSpeed));
+      let autoSpeed = Formulas.calculateAutotestSpeed(BASE_AUTOTEST_SPEED, efficiency, tutGitAutoBoost, this.state.loc) * dt;
+      this.state.testCoverageFloor = Math.min(tutGitFloorCap, this.state.testCoverageFloor + autoSpeed * 100);
+      if (this.state.testCoverageFloor > this.state.testCoverage) {
+        this.state.testCoverage = this.state.testCoverageFloor;
+      }
       return true;
     }
 
