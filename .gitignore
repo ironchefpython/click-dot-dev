@@ -1,0 +1,6 @@
+.cache/
+.gemini/
+.idea/
+.m2/
+.npm/
+node_modules/
