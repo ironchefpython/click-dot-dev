@@ -4,7 +4,8 @@
   "description": "Solo coder developer idle game",
   "main": "main.js",
   "scripts": {
-    "test": "jest"
+    "test": "jest",
+    "sim": "node simulate.js"
   },
   "devDependencies": {
     "jest": "^30.4.2",

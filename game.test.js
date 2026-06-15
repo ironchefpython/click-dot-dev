@@ -4,6 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { checkTaskPossible, runTick, simulateProject, DT } = require('./simulate.js');
 
 const activeIntervals = [];
 const originalSetInterval = global.setInterval;
@@ -443,175 +444,26 @@ describe('Solo Coder Game - Tutorial Project Time Calibration', () => {
     const game = new DevGameEngine();
     const targets = [10, 20, 40, 80, 160];
     const projectNames = ['hello-world', 'calculator-app', 'todo-list', 'weather-app', 'sample-ecommerce'];
-    const actualTimes = [];
+    const tutorialSteps = [1, 2, 3, 4, 5]; // fully-unlocked step for each project
+    const tickCounter = { count: 0 };
 
-    // Helper to run ticks
-    let tickCount = 0;
-    const dt = 0.05;
-    function runTick(seconds, task) {
-      game.selectTask(task);
-      const steps = Math.round(seconds / dt);
-      for (let i = 0; i < steps; i++) {
-        game.tick(dt);
-        tickCount++;
-      }
-    }
-
-    // P1: Hello World
-    let p1Start = tickCount;
-    game.state.tutorialStep = 1;
-    game.loadContract(0);
-    while (game.state.backlog > 0.05) {
-      runTick(dt, 'code');
-    }
-    game.shipProject();
-    actualTimes.push((tickCount - p1Start) * dt);
-
-    // P2: Calculator App
-    let p2Start = tickCount;
-    game.state.tutorialStep = 1.8;
-    game.loadContract(1);
-    runTick(3.0, 'code');
-    game.state.tutorialStep = 2; // debug unlocked
-    runTick(3.0, 'debug');
-    
-    // Convergence loop to code/debug Project 2
-    let limit = 0;
-    while (!game.isShipReady() && limit < 10000) {
-      limit++;
-      if (game.state.backlog > 0.05) {
-        runTick(dt, 'code');
-      } else if (game.state.revealedBugs >= 1.0) {
-        runTick(dt, 'debug');
-      } else {
-        runTick(dt, 'debug'); // clean up fractional bugs
-      }
-    }
-    game.shipProject();
-    actualTimes.push((tickCount - p2Start) * dt);
-
-    // P3: Todo List
-    let p3Start = tickCount;
-    game.state.tutorialStep = 2.8;
-    game.loadContract(2);
-    runTick(3.0, 'code');
-    runTick(3.0, 'test');
-    game.state.tutorialStep = 3; // test unlocked
-    
-    // Focus-friendly block strategy
-    limit = 0;
-    while (!game.isShipReady() && limit < 10000) {
-      limit++;
-      if (game.state.backlog > 0.05) {
-        while (game.state.backlog > 0.05 && limit++ < 10000) {
-          runTick(dt, 'code');
-        }
-      } else if (game.state.testCoverage < 99.9) {
-        while (game.state.testCoverage < 99.9 && limit++ < 10000) {
-          runTick(dt, 'test');
-        }
-      } else if (game.state.revealedBugs >= 1.0) {
-        while (game.state.revealedBugs > 0.05 && limit++ < 10000) {
-          runTick(dt, 'debug');
-        }
-      } else {
-        runTick(dt, 'debug');
-      }
-    }
-    game.shipProject();
-    actualTimes.push((tickCount - p3Start) * dt);
-
-    // P4: Weather App
-    let p4Start = tickCount;
-    game.state.tutorialStep = 3.8;
-    game.loadContract(3);
-    
-    // Code until LOC >= 8
-    while (game.state.loc < 8.0) {
-      runTick(dt, 'code');
-    }
-    game.state.tutorialStep = 4; // refactor unlocked
-    
-    // Refactor for 4 seconds
-    runTick(4.0, 'refactor');
-    
-    // Finish Project 4 using block-based strategy
-    limit = 0;
-    while (!game.isShipReady() && limit < 10000) {
-      limit++;
-      if (game.state.backlog > 0.05) {
-        while (game.state.backlog > 0.05 && limit++ < 10000) {
-          runTick(dt, 'code');
-        }
-      } else if (game.state.testCoverage < 99.9) {
-        while (game.state.testCoverage < 99.9 && limit++ < 10000) {
-          runTick(dt, 'test');
-        }
-      } else if (game.state.revealedBugs >= 1.0) {
-        while (game.state.revealedBugs > 0.05 && limit++ < 10000) {
-          runTick(dt, 'debug');
-        }
-      } else {
-        runTick(dt, 'debug');
-      }
-    }
-    game.shipProject();
-    actualTimes.push((tickCount - p4Start) * dt);
-
-    // P5: Sample Ecommerce
-    let p5Start = tickCount;
-    game.state.tutorialStep = 4.8;
-    game.loadContract(4);
-    
-    // Code for 3 seconds, then test until coverage >= 10
-    runTick(3.0, 'code');
-    while (game.state.testCoverage < 10.0) {
-      runTick(dt, 'test');
-    }
-    game.state.tutorialStep = 5; // autotest unlocked
-    
-    // Autotest until testCoverageFloor >= 10
-    while (game.state.testCoverageFloor < 10.0) {
-      runTick(dt, 'autotest');
-    }
-    
-    // Finish Project 5 using block-based strategy
-    limit = 0;
-    while (!game.isShipReady() && limit < 10000) {
-      limit++;
-      if (game.state.backlog > 0.05) {
-        while (game.state.backlog > 0.05 && limit++ < 10000) {
-          runTick(dt, 'code');
-        }
-      } else if (game.state.testCoverage < 99.9) {
-        while (game.state.testCoverage < 99.9 && limit++ < 10000) {
-          runTick(dt, 'test');
-        }
-      } else if (game.state.revealedBugs >= 1.0) {
-        while (game.state.revealedBugs > 0.05 && limit++ < 10000) {
-          runTick(dt, 'debug');
-        }
-      } else {
-        runTick(dt, 'debug');
-      }
-    }
-    game.shipProject();
-    actualTimes.push((tickCount - p5Start) * dt);
-
-    // Assert and print results
     console.log('\n==================================================');
     console.log('Automated Tutorial Playtime Verification (in seconds):');
     console.log('==================================================');
+
     for (let i = 0; i < 5; i++) {
-      const actual = actualTimes[i];
+      game.state.tutorialStep = tutorialSteps[i];
+      const { taskTimes } = simulateProject(game, i, tickCounter);
+      const actual = Object.values(taskTimes).reduce((a, b) => a + b, 0);
       const target = targets[i];
       const diffPct = (Math.abs(actual - target) / target) * 100;
       console.log(`Project ${i + 1} (${projectNames[i]}): Target = ${target}s | Actual = ${actual.toFixed(2)}s | Diff = ${diffPct.toFixed(1)}%`);
-      
+
       // 20% margin assertion
       expect(actual).toBeGreaterThanOrEqual(target * 0.8);
       expect(actual).toBeLessThanOrEqual(target * 1.2);
     }
+
     console.log('==================================================\n');
   });
 

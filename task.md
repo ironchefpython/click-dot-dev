@@ -12,3 +12,8 @@
 - [x] Replace the backlog card progress bar with the minimum LOC required to satisfy the next feature point
 - [x] Update the bugs UI card layout to say "Bugs (Found / Fixable)" displaying `revealedBugs` / `bugPoints`
 - [x] Remove bugfix points visual from the backlog UI card (displaying only feature points)
+- [x] Create `simulate.js` to run all tutorial simulations sequentially, counting task time, and outputting results in a formatted table
+- [x] Fix fatigue accumulation and efficiency calculations under the tutorial phase
+- [x] Limit calibration to exactly 10 iterations per project in `calibrate_prob.js` using a parameterized `MAX_ITERATIONS` binary search
+- [x] Update the run helper in `game.test.js` and `simulate.js` to incorporate rest breaks when fatigue >= 20.0
+- [x] Perform final recalibration and update `phase-tutorial.js` parameters to hit playtime targets perfectly

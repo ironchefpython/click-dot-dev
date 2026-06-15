@@ -195,12 +195,12 @@ class DevGameEngine {
     for (let key in this.state.taskFatigue) {
       if (key === this.state.activeTask) {
         if (key !== 'idle') {
-          this.state.taskFatigue[key] += dt;
+          const complexityMultiplier = this.state.complexity || 1.0;
+          this.state.taskFatigue[key] += dt * complexityMultiplier;
         } else {
           this.state.taskFatigue[key] = 0;
         }
       } else {
-        Math.max(0, this.state.taskFatigue[key] - decayRate * dt);
         this.state.taskFatigue[key] = Math.max(0, this.state.taskFatigue[key] - decayRate * dt);
       }
     }
@@ -216,14 +216,13 @@ class DevGameEngine {
     let fatigueVal = K_FATIGUE * (Math.exp(LAMBDA * activeFatigueTime) - 1);
     let efficiency;
     if (this.state.tutorialStep < 6) {
-      fatigueVal = 0;
       const projectNum = Math.min(5, Math.max(1, Math.floor(this.state.tutorialStep)));
       // Base efficiency scales linearly: P1 → 0.10, P5 → 1.00
       // Max efficiency = 2 × base:       P1 → 0.20, P5 → 2.00
       const baseEff = 0.10 + (projectNum - 1) * (0.90 / 4);
       const maxFocusBonus = baseEff; // cap so max = 2× base
       focusVal = Math.min(focusVal, maxFocusBonus);
-      efficiency = Math.max(0.01, baseEff + focusVal);
+      efficiency = Math.max(0.01, baseEff + focusVal - fatigueVal);
     } else {
       efficiency = Math.max(0.1, 1 + focusVal - fatigueVal);
     }
