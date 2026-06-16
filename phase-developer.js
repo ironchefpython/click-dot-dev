@@ -118,7 +118,8 @@ const DEVELOPER_PHASE = {
       xpReward: xpReward,
       isCourse: false
     };
-  }
+  },
+  startingConditions: {}
 };
 
 if (typeof module !== 'undefined') {

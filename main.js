@@ -107,11 +107,56 @@ const AUTOTEST_LINES = [
 if (typeof window !== 'undefined') {
   window.createSimulator = (initState) => new DevGameEngine(initState);
 
-  let engine = new DevGameEngine();
+  const startingConditions = {
+    ...(typeof TUTORIAL_PHASE !== 'undefined' ? TUTORIAL_PHASE.startingConditions : {}),
+    ...(typeof DEVELOPER_PHASE !== 'undefined' ? DEVELOPER_PHASE.startingConditions : {})
+  };
+
+  let initialGameState = null;
+  const hashKey = window.location.hash ? window.location.hash.substring(1) : '';
+  if (hashKey && startingConditions[hashKey]) {
+    const cond = startingConditions[hashKey];
+    initialGameState = {
+      xp: cond.xp || 0,
+      cash: cond.cash || 0,
+      loc: cond.loc || 0,
+      hiddenBugs: cond.hiddenBugs || 0,
+      revealedBugs: cond.revealedBugs || 0,
+      backlog: 0,
+      featurePoints: 0,
+      bugPoints: 0,
+      testCoverage: cond.testCoverage || 0,
+      testCoverageFloor: cond.testCoverageFloor || 0,
+      minLoc: 0,
+      complexity: cond.complexity || 1.0,
+      manualTestFactor: cond.manualTestFactor || 1.0,
+      activeTask: cond.activeTask || 'idle',
+      taskFatigue: {
+        idle: 0, code: 0, test: 0, debug: 0, refactor: 0, autotest: 0
+      },
+      purchasedUpgrades: cond.purchasedUpgrades ? [...cond.purchasedUpgrades] : [],
+      tutorialStep: cond.tutorialStep !== undefined ? cond.tutorialStep : 0,
+      codeValue: 0,
+      contractIndex: cond.contractIndex || 0,
+      bugIntroProgress: 0.0,
+      revealedBugProgress: 0.0,
+      bugfixClearProgress: 0.0,
+      featureCompleteProgress: 0.0,
+      revealProgress: 0.0,
+      debugProgress: 0.0,
+      bugfixBacklogProgress: 0.0
+    };
+  }
+
+  let engine = new DevGameEngine(initialGameState);
   window.engine = engine;
   let refactorTimer = 0;
   let terminalScrollTimer = 0;
   let lastUpgradesStateKey = '';
+
+  window.addEventListener('hashchange', () => {
+    window.location.reload();
+  });
 
   // Initialize DOM bindings on DOMContentLoaded
   document.addEventListener("DOMContentLoaded", () => {
@@ -180,6 +225,75 @@ if (typeof window !== 'undefined') {
     updateProjectUIHeader();
     syncTutorialButtonsUI();
 
+    // If starting condition has UI implications, configure overlay popup
+    if (hashKey && startingConditions[hashKey]) {
+      const overlay = document.getElementById("tutorial-overlay");
+      const text = document.getElementById("tutorial-text");
+      const title = document.getElementById("tutorial-title");
+      const btn = document.getElementById("tutorial-action-btn");
+      const skipBtn = document.getElementById("tutorial-skip-btn");
+
+      if (skipBtn) skipBtn.style.display = 'none';
+
+      if (hashKey === 'T1') {
+        if (overlay) overlay.style.display = 'none';
+        syncTutorialButtonsUI();
+        highlightTaskButton('code');
+      } else if (hashKey === 'T2') {
+        if (overlay) overlay.style.display = 'flex';
+        if (title) title.textContent = "Project Shipped: Hello World";
+        if (text) {
+          text.innerHTML = `
+            <p>Congratulations on shipping your <strong>Hello World</strong> project!</p>
+            <p style="margin-top: 10px;">Next up, let's accept the <strong>Calculator App</strong> contract to continue your training.</p>
+          `;
+        }
+        if (btn) {
+          btn.textContent = "Accept Calculator App";
+          btn.onclick = () => { handleTutorialAction(); };
+        }
+      } else if (hashKey === 'T3') {
+        if (overlay) overlay.style.display = 'flex';
+        if (title) title.textContent = "Project Shipped: Calculator App";
+        if (text) {
+          text.innerHTML = `
+            <p>Congratulations on shipping your <strong>Calculator App</strong>!</p>
+            <p style="margin-top: 10px;">Next up, accept the <strong>Todo List</strong> contract to learn about manual testing.</p>
+          `;
+        }
+        if (btn) {
+          btn.textContent = "Accept Todo List";
+          btn.onclick = () => { handleTutorialAction(); };
+        }
+      } else if (hashKey === 'T4') {
+        if (overlay) overlay.style.display = 'flex';
+        if (title) title.textContent = "Project Shipped: Todo List";
+        if (text) {
+          text.innerHTML = `
+            <p>Excellent testing! The <strong>Todo List</strong> project is shipped.</p>
+            <p style="margin-top: 10px;">Next up, accept the <strong>Weather App</strong> contract to learn about refactoring.</p>
+          `;
+        }
+        if (btn) {
+          btn.textContent = "Accept Weather App";
+          btn.onclick = () => { handleTutorialAction(); };
+        }
+      } else if (hashKey === 'T5') {
+        if (overlay) overlay.style.display = 'flex';
+        if (title) title.textContent = "Project Shipped: Weather App";
+        if (text) {
+          text.innerHTML = `
+            <p>Great refactoring! The <strong>Weather App</strong> project is shipped.</p>
+            <p style="margin-top: 10px;">Now, accept the <strong>Sample Ecommerce</strong> contract to set up automated testing.</p>
+          `;
+        }
+        if (btn) {
+          btn.textContent = "Accept Sample Ecommerce";
+          btn.onclick = () => { handleTutorialAction(); };
+        }
+      }
+    }
+
     // Setup event listeners for tutorial progression
     engine.addEventListener('bugRevealed', () => {
       const overlay = document.getElementById("tutorial-overlay");
@@ -225,7 +339,7 @@ if (typeof window !== 'undefined') {
       const title = document.getElementById("tutorial-title");
       const btn = document.getElementById("tutorial-action-btn");
 
-      if (engine.state.tutorialStep === 3.8 && engine.state.loc >= 8) {
+      if (engine.state.tutorialStep === 3.8 && engine.state.complexity >= 3.0) {
         engine.state.tutorialStep = 4.5;
         overlay.style.display = 'flex';
         title.textContent = "Unit 4: Code Refactoring";
@@ -276,6 +390,21 @@ if (typeof window !== 'undefined') {
 
     engine.addEventListener('shippable', checkGraduate);
     engine.addEventListener('testCoverageFloorIncreased', checkGraduate);
+
+    engine.addEventListener('complexityThresholdReached', (data) => {
+      const words = {
+        3.0: "complicated",
+        3.5: "convoluted",
+        4.0: "tortuous",
+        4.5: "byzantine",
+        5.0: "job security",
+        5.5: "WTF",
+        6.0: "WTF?!?!!!!",
+        6.5: "OMGWTFBBQ"
+      };
+      const word = words[data.threshold] || "unknown";
+      logToConsole(`[COMPLEXITY WARNING] Complexity has reached "${word}" (${data.threshold.toFixed(1)})! Switching task to IDLE.`, 'error-msg');
+    });
 
     engine.addEventListener('tick', (data) => {
       if (engine.state.tutorialStep === 4) {
@@ -440,16 +569,15 @@ if (typeof window !== 'undefined') {
     // Bugs metrics (blank in Project 1, shown in Project 2 onwards)
     if (engine.state.tutorialStep < 1.8) {
       document.getElementById("stat-bugs-found").textContent = "-";
-      document.getElementById("stat-bugs-fixable").textContent = "-";
       document.getElementById("stat-bug-rate").textContent = "Bug rate: -";
     } else {
       document.getElementById("stat-bugs-found").textContent = Math.floor(engine.state.revealedBugs);
-      document.getElementById("stat-bugs-fixable").textContent = Math.floor(engine.state.bugPoints);
       let baseBugRate = engine.currentContract ? (engine.currentContract.baseBugRate !== undefined ? engine.currentContract.baseBugRate : 0.05) : 0.05;
       let complexityFactor = engine.state.purchasedUpgrades.includes('framework') ? 0.7 : 1.0;
       let complexityMultiplier = 1 + (engine.state.loc / 450) * complexityFactor;
       let linterRed = engine.state.purchasedUpgrades.includes('linter') ? 0.6 : 1.0;
-      document.getElementById("stat-bug-rate").textContent = `Bug rate: ${(baseBugRate * complexityMultiplier * linterRed * 100).toFixed(1)}%`;
+      let displayBugRate = Formulas.calculateBugIntroProb(baseBugRate, engine.state.complexity * complexityMultiplier, linterRed);
+      document.getElementById("stat-bug-rate").textContent = `Bug rate: ${(displayBugRate * 100).toFixed(1)}%`;
     }
 
     // Test coverage metrics (blank in Project 1 and 2, shown in Project 3 onwards)
@@ -534,19 +662,69 @@ if (typeof window !== 'undefined') {
     shipBtn.disabled = !engine.isShipReady();
 
     // Code button status: disable when backlog is empty (backlog <= 0.05)
-    const codeRadio = document.querySelector('input[name="active-task"][value="code"]');
-    const codeLabel = document.getElementById("label-code");
-    if (codeRadio) {
+    const isCodeUnlocked = (engine.state.tutorialStep >= 6) || (engine.state.tutorialStep >= 1);
+    if (isCodeUnlocked) {
       if (engine.state.backlog <= 0.05) {
-        codeRadio.disabled = true;
-        if (codeLabel) codeLabel.classList.add("locked");
+        lockTaskButton('code');
       } else {
-        let isCodeUnlocked = (engine.state.tutorialStep >= 6) || (engine.state.tutorialStep >= 1);
-        if (isCodeUnlocked) {
-          codeRadio.disabled = false;
-          if (codeLabel) codeLabel.classList.remove("locked");
-        }
+        unlockTaskButton('code');
       }
+    } else {
+      lockTaskButton('code');
+    }
+
+    // Debug button status: disable when revealed bugs is zero (revealedBugs <= 0.05)
+    const isDebugUnlocked = (engine.state.tutorialStep >= 6) || (engine.state.tutorialStep >= 2);
+    if (isDebugUnlocked) {
+      if (engine.state.revealedBugs <= 0.05) {
+        lockTaskButton('debug');
+      } else {
+        unlockTaskButton('debug');
+      }
+    } else {
+      lockTaskButton('debug');
+    }
+
+    // Test button status: disable until first backlog point is reduced or testCoverage >= 100%
+    const isTestUnlocked = (engine.state.tutorialStep >= 6) || (engine.state.tutorialStep >= 3);
+    if (isTestUnlocked) {
+      const needBacklogReduced = engine.state.tutorialStep >= 6;
+      if ((needBacklogReduced && !engine.state.backlogReduced) || engine.state.testCoverage >= 100.0) {
+        lockTaskButton('test');
+      } else {
+        unlockTaskButton('test');
+      }
+    } else {
+      lockTaskButton('test');
+    }
+
+    // Refactor button status: disable until first backlog point is reduced or complexity reaches minComplexity
+    const isRefactorUnlocked = (engine.state.tutorialStep >= 6) || (engine.state.tutorialStep >= 4);
+    if (isRefactorUnlocked) {
+      const needBacklogReduced = engine.state.tutorialStep >= 6;
+      const initialComplexity = engine.currentContract ? (engine.currentContract.complexity || 1.0) : 1.0;
+      const minComplexity = Math.min(initialComplexity, 1.5);
+      if ((needBacklogReduced && !engine.state.backlogReduced) || engine.state.complexity <= minComplexity) {
+        lockTaskButton('refactor');
+      } else {
+        unlockTaskButton('refactor');
+      }
+    } else {
+      lockTaskButton('refactor');
+    }
+
+    // Autotest button status: disable when floor reaches cap
+    const isAutotestUnlocked = (engine.state.tutorialStep >= 6) || (engine.state.tutorialStep >= 5);
+    if (isAutotestUnlocked) {
+      const hasTutGit = engine.state.purchasedUpgrades.includes('git-workflow');
+      const tutGitFloorCap = hasTutGit ? 95 : 90;
+      if (engine.state.testCoverageFloor >= tutGitFloorCap) {
+        lockTaskButton('autotest');
+      } else {
+        unlockTaskButton('autotest');
+      }
+    } else {
+      lockTaskButton('autotest');
     }
 
     // Mini pie badges in header
@@ -760,20 +938,26 @@ if (typeof window !== 'undefined') {
 
   function unlockTaskButton(task) {
     const input = document.querySelector(`input[value="${task}"]`);
-    if (input) input.removeAttribute("disabled");
+    if (input && input.hasAttribute("disabled")) {
+      input.removeAttribute("disabled");
+    }
     const label = document.getElementById(`label-${task}`);
     if (label) label.classList.remove("locked");
     
     const fileEl = document.getElementById(`file-${task}`);
     if (fileEl) {
       fileEl.classList.remove("locked");
-      fileEl.textContent = fileEl.textContent.replace("🔒 ", "📄 ");
+      if (fileEl.textContent.includes("🔒 ")) {
+        fileEl.textContent = fileEl.textContent.replace("🔒 ", "📄 ");
+      }
     }
   }
 
   function lockTaskButton(task) {
     const input = document.querySelector(`input[value="${task}"]`);
-    if (input) input.setAttribute("disabled", "true");
+    if (input && !input.hasAttribute("disabled")) {
+      input.setAttribute("disabled", "true");
+    }
     const label = document.getElementById(`label-${task}`);
     if (label) label.classList.add("locked");
     

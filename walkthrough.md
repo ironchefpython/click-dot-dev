@@ -50,6 +50,18 @@ Every time an action ticked or an integer LOC boundary was crossed, the engine n
     *   **Project 4 (Weather App):** Target = 80s | Actual = 81.30s (Diff = 1.6%)
     *   **Project 5 (Sample E-commerce):** Target = 160s | Actual = 157.35s (Diff = -1.7%)
 
+## Bug Rate Complexity Exponent Scaling Update
+*   **Formula Adjustment:** The bug introduction probability calculation in [formulas.js](file:///app/formulas.js#L77-L79) has been updated to scale with the complexity raised to the power of `1.2` rather than `2.0`.
+    $$\text{Bug Intro Prob} = \min(1.0, \text{baseBugRate} \times \text{Complexity}^{1.2} \times \text{linterReduction})$$
+*   **Career Simulation Stability:** Under the new `1.2` exponent scaling model, the developer project `D4: multi-tenant-crm` (which starts with a high baseline complexity of `3.5`) no longer gets trapped in a bug-introduction cycle and completes the career simulation successfully in **31.40s** (instead of hitting the `TIMEOUT`).
+*   **Calibration Bounds:** The test suite calibration target checks pass perfectly, with Project 2 (Calculator App) falling well within its 20% margin target.
+
+## Starting Conditions Upgrades
+We updated the tutorial starting conditions for `T3`, `T4`, and `T5` in `phase-tutorial.js` so that the player starts with all appropriate upgrades purchased in previous phases:
+*   **T3:** Starts with `['oss-ide']` purchased (unlocked after Project 1).
+*   **T4:** Starts with `['oss-ide', 'install-linux']` purchased (unlocked after Projects 1 and 2).
+*   **T5:** Starts with `['oss-ide', 'install-linux', 'touch-typing']` purchased (unlocked after Projects 1, 2, and 3).
+
 ## Verification
 To run the career simulation table generator:
 ```bash

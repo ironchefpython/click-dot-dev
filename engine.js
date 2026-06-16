@@ -75,7 +75,9 @@ class DevGameEngine {
       featureCompleteProgress: 0.0,
       revealProgress: 0.0,
       debugProgress: 0.0,
-      bugfixBacklogProgress: 0.0
+      bugfixBacklogProgress: 0.0,
+      initialBacklog: 0,
+      backlogReduced: false
     };
     
     // Ensure purchasedUpgrades is stored as an array in state for serialization compatibility,
@@ -92,6 +94,12 @@ class DevGameEngine {
     }
     if (this.state.complexity === undefined) {
       this.state.complexity = 1.0;
+    }
+    if (this.state.initialBacklog === undefined) {
+      this.state.initialBacklog = this.state.backlog;
+    }
+    if (this.state.backlogReduced === undefined) {
+      this.state.backlogReduced = (this.state.backlog <= this.state.initialBacklog - 1);
     }
 
     this.currentContract = null;
@@ -143,7 +151,7 @@ class DevGameEngine {
 
     this.state.featurePoints = Math.round(this.currentContract.backlog);
     this.state.bugPoints = 0;
-    this.state.backlog = this.state.featurePoints + this.state.bugPoints;
+    this.state.backlog = this.state.featurePoints;
     this.state.loc = 0;
     this.state.hiddenBugs = 0;
     this.state.revealedBugs = 0;
@@ -155,6 +163,8 @@ class DevGameEngine {
     // Set initial test coverage to the current floor
     this.state.testCoverage = this.state.testCoverageFloor;
     this.state.activeTask = 'idle';
+    this.state.initialBacklog = this.state.backlog;
+    this.state.backlogReduced = false;
 
     // Reset progress accumulators for deterministic behavior
     this.state.bugIntroProgress = 0.0;
@@ -168,19 +178,36 @@ class DevGameEngine {
 
   selectTask(taskName) {
     if (this.state.activeTask === taskName) return;
+
+    if (taskName === 'test') {
+      if (this.state.tutorialStep >= 6 && !this.state.backlogReduced) return;
+      if (this.state.testCoverage >= 100.0) return;
+    }
+    if (taskName === 'refactor') {
+      const initialComplexity = this.currentContract ? (this.currentContract.complexity || 1.0) : 1.0;
+      const minComplexity = Math.min(initialComplexity, 1.5);
+      if (this.state.tutorialStep >= 6 && !this.state.backlogReduced) return;
+      if (this.state.complexity <= minComplexity) return;
+    }
+
     this.state.activeTask = taskName;
   }
 
   tick(dt) {
-    const currentSum = this.state.featurePoints + this.state.bugPoints;
-    if (this.state.backlog !== currentSum) {
-      const diff = this.state.backlog - currentSum;
+    if (this.state.backlog !== this.state.featurePoints) {
+      const diff = this.state.backlog - this.state.featurePoints;
       this.state.featurePoints = Math.max(0, Math.round(this.state.featurePoints + diff));
       if (this.state.backlog <= 0.05) {
         this.state.featurePoints = 0;
-        this.state.bugPoints = 0;
       }
-      this.state.backlog = this.state.featurePoints + this.state.bugPoints;
+      this.state.backlog = this.state.featurePoints;
+    }
+
+    if (this.state.initialBacklog === undefined) {
+      this.state.initialBacklog = this.state.backlog;
+    }
+    if (this.state.backlog <= this.state.initialBacklog - 1) {
+      this.state.backlogReduced = true;
     }
 
     const prevRank = this.getRank();
@@ -203,7 +230,7 @@ class DevGameEngine {
            const fatigueGain = Formulas.calculateFatigueGain(this.state.complexity, dt);
            this.state.taskFatigue[key] = Math.min(40.0, this.state.taskFatigue[key] + fatigueGain);
         } else {
-          this.state.taskFatigue[key] = 0;
+           this.state.taskFatigue[key] = 0;
         }
       } else {
         const isActiveIdle = (this.state.activeTask === 'idle');
@@ -229,19 +256,38 @@ class DevGameEngine {
 
     // 3. Process active task
     let isTaskProcessed = false;
+    const prevComplexity = this.state.complexity;
     if (this.state.activeTask !== 'idle') {
       isTaskProcessed = this.processTaskAction(this.state.activeTask, efficiency, dt);
       if (this.state.activeTask === 'code' && this.state.backlog <= 0.05) {
         this.selectTask('idle');
-      } else if (this.state.activeTask === 'test' && this.state.testCoverage >= 100.0) {
+      } else if (this.state.activeTask === 'test' && ((this.state.tutorialStep >= 6 && !this.state.backlogReduced) || this.state.testCoverage >= 100.0)) {
         this.selectTask('idle');
       } else if (this.state.activeTask === 'debug' && this.state.revealedBugs <= 0.05) {
         this.selectTask('idle');
+      } else if (this.state.activeTask === 'refactor') {
+        const initialComplexity = this.currentContract ? (this.currentContract.complexity || 1.0) : 1.0;
+        const minComplexity = Math.min(initialComplexity, 1.5);
+        if ((this.state.tutorialStep >= 6 && !this.state.backlogReduced) || this.state.complexity <= minComplexity) {
+          this.selectTask('idle');
+        }
       } else if (this.state.activeTask === 'autotest') {
         const hasTutGit = this.state.purchasedUpgrades.includes('git-workflow');
         const tutGitFloorCap = hasTutGit ? 95 : 90;
         if (this.state.testCoverageFloor >= tutGitFloorCap) {
           this.selectTask('idle');
+        }
+      }
+      
+      // Complexity threshold warnings crossing
+      if (this.state.activeTask === 'code') {
+        const thresholds = [3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5];
+        for (const threshold of thresholds) {
+          if (prevComplexity < threshold && this.state.complexity >= threshold) {
+            this.selectTask('idle');
+            this.dispatchEvent('complexityThresholdReached', { threshold });
+            break;
+          }
         }
       }
       
@@ -330,6 +376,8 @@ class DevGameEngine {
     
     this.state.minLoc = Formulas.getMinLoc(completedFeatures, growthScale, transitionOffset, this.state.complexity);
 
+    this.state.backlog = this.state.featurePoints;
+
     this.dispatchEvent('tick', { dt });
 
     return {
@@ -395,7 +443,11 @@ class DevGameEngine {
       if (completedIntegers > 0) {
         for (let i = 0; i < completedIntegers; i++) {
           // 1. Increase complexity using formulas.js increment
-          this.state.complexity += Formulas.getComplexityIncrement(this.state.tutorialStep);
+          if (prevFloor === 0 && i === 0) {
+            this.state.complexity = 1.5;
+          } else {
+            this.state.complexity += Formulas.getComplexityIncrement(this.state.tutorialStep, this.currentContract.complexity, this.state.loc);
+          }
 
           // 2. Bug introduction check
           let complexityMultiplier = 1 + (this.state.loc / 450) * complexityFactor;
@@ -427,15 +479,7 @@ class DevGameEngine {
           }
 
           // 3. Backlog clearing
-          if (this.state.bugPoints > 0) {
-            let bugfixClearProb = this.currentContract ? (this.currentContract.bugfixClearProb !== undefined ? this.currentContract.bugfixClearProb : (1.0 / difficulty)) : (1.0 / difficulty);
-            
-            this.state.bugfixClearProgress = (this.state.bugfixClearProgress || 0.0) + bugfixClearProb;
-            if (this.state.bugfixClearProgress >= 1.0) {
-              this.state.bugfixClearProgress -= 1.0;
-              this.state.bugPoints = Math.max(0, this.state.bugPoints - 1);
-            }
-          } else if (this.state.featurePoints > 0) {
+          if (this.state.featurePoints > 0) {
             let totalFeatures = this.currentContract ? Math.round(this.currentContract.backlog) : 0;
             let n = totalFeatures - this.state.featurePoints + 1;
             
@@ -467,7 +511,7 @@ class DevGameEngine {
       let completedFeatures = totalFeatures - this.state.featurePoints;
       this.state.minLoc = Formulas.getMinLoc(completedFeatures, growthScale, transitionOffset, this.state.complexity);
 
-      this.state.backlog = this.state.featurePoints + this.state.bugPoints;
+      this.state.backlog = this.state.featurePoints;
       return true;
     } 
     
@@ -497,16 +541,7 @@ class DevGameEngine {
       if (this.state.debugProgress >= 1.0) {
         this.state.debugProgress -= 1.0;
         this.state.revealedBugs = Math.max(0, this.state.revealedBugs - 1);
-        
-        // Deterministic split outcome
-        this.state.bugfixBacklogProgress = (this.state.bugfixBacklogProgress || 0.0) + 0.70;
-        if (this.state.bugfixBacklogProgress >= 1.0) {
-          this.state.bugfixBacklogProgress -= 1.0;
-          this.state.bugPoints++;
-        } else {
-          // Immediately resolved!
-        }
-        this.state.backlog = this.state.featurePoints + this.state.bugPoints;
+        this.state.backlog = this.state.featurePoints;
       }
       return true;
     } 
@@ -522,7 +557,8 @@ class DevGameEngine {
       const f = this.state.loc / locOld;
       
       const initialComplexity = this.currentContract ? (this.currentContract.complexity || 1.0) : 1.0;
-      this.state.complexity = Math.max(initialComplexity, this.state.complexity * f);
+      const minComplexity = Math.min(initialComplexity, 1.5);
+      this.state.complexity = Math.max(minComplexity, this.state.complexity * f);
 
       this.state.testCoverage = Math.max(this.state.testCoverageFloor, this.state.testCoverage - refactorAmt * 0.15);
       return true;

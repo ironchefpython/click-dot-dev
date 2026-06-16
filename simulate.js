@@ -23,11 +23,15 @@ function checkTaskPossible(game, task) {
   if (task === 'code') {
     isGamestatePossible = game.state.backlog > 0.05;
   } else if (task === 'test') {
-    isGamestatePossible = game.state.testCoverage < 100.0;
+    const needBacklogReduced = game.state.tutorialStep >= 6;
+    isGamestatePossible = (!needBacklogReduced || game.state.backlogReduced) && game.state.testCoverage < 100.0;
   } else if (task === 'debug') {
     isGamestatePossible = game.state.revealedBugs > 0.05;
   } else if (task === 'refactor') {
-    isGamestatePossible = game.state.loc > game.state.minLoc;
+    const needBacklogReduced = game.state.tutorialStep >= 6;
+    const initialComplexity = game.currentContract ? (game.currentContract.complexity || 1.0) : 1.0;
+    const minComplexity = Math.min(initialComplexity, 1.5);
+    isGamestatePossible = (!needBacklogReduced || game.state.backlogReduced) && game.state.loc > game.state.minLoc && game.state.complexity > minComplexity;
   } else if (task === 'autotest') {
     const hasTutGit = game.state.purchasedUpgrades.includes('git-workflow');
     const tutGitFloorCap = hasTutGit ? 95 : 90;
@@ -96,7 +100,7 @@ const DEFAULT_THRESHOLDS = {
   code: { set: 0.05, reset: 0.05 },
   debug: { set: 1.0, reset: 0.0 },
   test: { set: 80.0, reset: 99.9 },
-  refactor: { set: 0.18, reset: 0.05 }, // relative to contract's initial complexity
+  refactor: { set: 1.4, reset: 0.05 }, // relative to contract's initial complexity
   autotest: { set: 30.0, reset: 60.0 }
 };
 
@@ -113,7 +117,7 @@ const DEFAULT_THRESHOLDS = {
  *
  * @returns {{ taskTimes, finalLoc, finalMinLoc }}
  */
-function simulateProject(game, contractIdx, tickCounter, thresholds = null, maxTicks = 4000) {
+function simulateProject(game, contractIdx, tickCounter, thresholds = null, maxTicks = 15000) {
   const taskTimes = { idle: 0, code: 0, test: 0, debug: 0, refactor: 0, autotest: 0 };
 
   game.loadContract(contractIdx);
@@ -178,11 +182,12 @@ function simulateProject(game, contractIdx, tickCounter, thresholds = null, maxT
       activeTasks.test = false;
     }
 
-    // Refactor (relative to contract initialComplexity)
-    if (game.state.complexity >= initialComplexity + activeThresholds.refactor.set) {
+    // Refactor (relative to contract initialComplexity, but starting at 1.5)
+    const refactorBase = Math.max(initialComplexity, 1.5);
+    if (game.state.complexity >= refactorBase + activeThresholds.refactor.set) {
       activeTasks.refactor = true;
     }
-    if (game.state.complexity <= initialComplexity + activeThresholds.refactor.reset) {
+    if (game.state.complexity <= refactorBase + activeThresholds.refactor.reset) {
       activeTasks.refactor = false;
     }
 

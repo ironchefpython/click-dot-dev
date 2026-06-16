@@ -75,17 +75,16 @@
      * Probability of introducing a bug per integer LOC completed.
      */
     calculateBugIntroProb(baseBugRate, complexity, linterReduction) {
-      return Math.min(1.0, baseBugRate * complexity * linterReduction);
+      return Math.min(1.0, baseBugRate * Math.pow(complexity, 1.2) * linterReduction);
     },
     
     /**
      * Increment applied to complexity per integer LOC completed.
      */
-    getComplexityIncrement(tutorialStep) {
-      if (tutorialStep !== undefined && tutorialStep < 6) {
-        return 0.005;
-      }
-      return 0.0001;
+    getComplexityIncrement(contractComplexity, loc) {
+      const currentLoc = loc !== undefined ? loc : 0;
+      const k = 0.01;
+      return (k * contractComplexity) / Math.sqrt(currentLoc + 100);
     },
     
     /**
