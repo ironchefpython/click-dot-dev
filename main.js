@@ -111,7 +111,6 @@ if (typeof window !== 'undefined') {
   window.engine = engine;
   let refactorTimer = 0;
   let terminalScrollTimer = 0;
-  let passiveBacklogTimer = 0;
   let lastUpgradesStateKey = '';
 
   // Initialize DOM bindings on DOMContentLoaded
@@ -311,17 +310,7 @@ if (typeof window !== 'undefined') {
         processConsoleScroll(engine.state.activeTask);
       }
 
-      // Passive backlog emails (triggered after tutorial is finished)
-      if (engine.state.tutorialStep >= 6) {
-        passiveBacklogTimer += dt;
-        if (passiveBacklogTimer >= 14) {
-          passiveBacklogTimer = 0;
-          let complexity = Math.floor(engine.state.loc / 350);
-          let incoming = 10 + complexity * 3;
-          engine.state.backlog += incoming;
-          logToConsole(`[CLIENT] Incoming email request: "New Feature Request" (+${incoming} Points)`, 'system-msg');
-        }
-      }
+
 
       // Render all stats to DOM
       renderUI(tickReport.focusVal, tickReport.fatigueVal, tickReport.efficiency);
@@ -431,27 +420,20 @@ if (typeof window !== 'undefined') {
     document.getElementById("sidebar-loc").textContent = `${Math.floor(engine.state.loc)} LOC`;
     document.getElementById("stat-loc").textContent = `${Math.floor(engine.state.loc)} LOC`;
     
-    let complexity = engine.state.complexity || 1.0;
-    document.getElementById("stat-complexity").textContent = `Complexity: x${complexity.toFixed(2)}`;
-    
     const featPoints = Math.floor(engine.state.featurePoints);
+    const totalFeatures = engine.currentContract ? Math.round(engine.currentContract.backlog) : 0;
     document.getElementById("stat-backlog").innerHTML = `
-      <span class="feat-backlog">${featPoints}</span>
+      <span class="feat-backlog">${featPoints} / ${totalFeatures}</span>
       <span style="font-size: 0.8rem; color: var(--color-muted); font-weight: normal; margin-left: 2px;">Pts</span>
     `;
 
     let minLocDisplay = "-";
-    if (engine.currentContract && engine.state.featurePoints > 0) {
-      const totalFeatures = Math.round(engine.currentContract.backlog);
-      const n = totalFeatures - engine.state.featurePoints + 1;
-      const growthScale = engine.currentContract.growthScale || 0;
-      const transitionOffset = engine.currentContract.transitionOffset || 0;
-      const complexity = engine.state.complexity || 1.0;
-      
-      const minLocVal = Formulas.getMinLoc(n, growthScale, transitionOffset, complexity);
-      minLocDisplay = `${minLocVal.toFixed(1)}`;
-    } else if (engine.currentContract && engine.state.featurePoints === 0) {
-      minLocDisplay = "Completed";
+    if (engine.currentContract) {
+      if (engine.state.featurePoints === 0) {
+        minLocDisplay = "Completed";
+      } else {
+        minLocDisplay = `${engine.state.minLoc.toFixed(1)}`;
+      }
     }
     document.getElementById("stat-min-loc").textContent = `Min LOC: ${minLocDisplay}`;
 
@@ -488,14 +470,45 @@ if (typeof window !== 'undefined') {
       document.getElementById("progress-coverage-floor").style.width = `${engine.state.testCoverageFloor}%`;
     }
 
-    // Specification metric — always 100% for tutorial projects, shown from the start
-    const specEl = document.getElementById("stat-specification");
-    const specSubEl = document.getElementById("stat-specification-sub");
-    if (specEl) {
-      // For tutorial courses: spec is always 100% (course brief is fixed)
-      // For freelance contracts: spec could fluctuate, but for now also 100%
-      specEl.textContent = "100%";
-      if (specSubEl) specSubEl.textContent = "Requirements met";
+    // Code Complexity UI Update
+    const compEl = document.getElementById("stat-complexity");
+    const compSubEl = document.getElementById("stat-complexity-sub");
+    if (compEl) {
+      const compVal = engine.state.complexity;
+      let details;
+      if (compVal < 1.2) {
+        details = { word: "elegant", class: "complexity-elegant" };
+      } else if (compVal < 1.4) {
+        details = { word: "simple", class: "complexity-simple" };
+      } else if (compVal < 2.0) {
+        details = { word: "average", class: "complexity-average" };
+      } else if (compVal < 2.5) {
+        details = { word: "verbose", class: "complexity-verbose" };
+      } else if (compVal < 3.0) {
+        details = { word: "opaque", class: "complexity-opaque" };
+      } else if (compVal < 3.5) {
+        details = { word: "complicated", class: "complexity-complicated" };
+      } else if (compVal < 4.0) {
+        details = { word: "convoluted", class: "complexity-convoluted" };
+      } else if (compVal < 4.5) {
+        details = { word: "tortuous", class: "complexity-tortuous" };
+      } else if (compVal < 5.0) {
+        details = { word: "byzantine", class: "complexity-byzantine" };
+      } else if (compVal < 5.5) {
+        details = { word: "job security", class: "complexity-job-security" };
+      } else if (compVal < 6.0) {
+        details = { word: "WTF", class: "complexity-wtf" };
+      } else if (compVal < 6.5) {
+        details = { word: "WTF?!?!!!!", class: "complexity-wtf-extreme" };
+      } else {
+        details = { word: "OMGWTFBBQ", class: "complexity-omgwtfbbq" };
+      }
+      
+      compEl.textContent = details.word;
+      compEl.className = "metric-value " + details.class;
+      if (compSubEl) {
+        compSubEl.textContent = `${compVal.toFixed(2)}x multiplier`;
+      }
     }
 
 

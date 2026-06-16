@@ -584,10 +584,61 @@ body {
   box-shadow: 0 0 6px rgba(168, 85, 247, 0.4);
 }
 
-/* Specification value (always 100%, green glow) */
-.spec-value {
-  color: var(--color-code);
-  text-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+/* Complexity Colors */
+.complexity-elegant {
+  color: #38bdf8; /* cool blue */
+  text-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+}
+.complexity-simple {
+  color: #10b981; /* inoffensive green */
+  text-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+}
+.complexity-average {
+  color: #10b981; /* inoffensive green */
+  text-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+}
+.complexity-verbose {
+  color: #eab308; /* yellow */
+  text-shadow: 0 0 8px rgba(234, 179, 8, 0.4);
+}
+.complexity-opaque {
+  color: #f97316; /* orange */
+  text-shadow: 0 0 8px rgba(249, 115, 22, 0.4);
+}
+.complexity-complicated {
+  color: #f43f5e; /* orange/red */
+  text-shadow: 0 0 8px rgba(244, 63, 94, 0.4);
+}
+.complexity-convoluted {
+  color: #ef4444; /* red */
+  text-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+}
+.complexity-tortuous {
+  color: #dc2626; /* red */
+  text-shadow: 0 0 8px rgba(220, 38, 38, 0.5);
+}
+.complexity-byzantine {
+  color: #b91c1c; /* red */
+  text-shadow: 0 0 8px rgba(185, 28, 28, 0.5);
+}
+.complexity-job-security,
+.complexity-wtf,
+.complexity-wtf-extreme,
+.complexity-omgwtfbbq {
+  color: #ef4444; /* throbbing angry red */
+  animation: complexity-throb 1s infinite alternate;
+  text-shadow: 0 0 10px rgba(239, 68, 68, 0.7);
+}
+
+@keyframes complexity-throb {
+  0% {
+    opacity: 0.75;
+    text-shadow: 0 0 4px rgba(239, 68, 68, 0.4);
+  }
+  100% {
+    opacity: 1;
+    text-shadow: 0 0 14px rgba(239, 68, 68, 0.95);
+  }
 }
 
 /* Code coverage floor value (purple) */

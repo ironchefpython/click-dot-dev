@@ -71,7 +71,7 @@ function runTick(game, seconds, task, taskTimes, tickCounter) {
     }
 
     // Rest if fatigue is too high
-    if (activeTask !== 'idle' && game.state.taskFatigue[activeTask] >= FATIGUE_REST_THRESHOLD) {
+    if (game.state.tutorialStep >= 6 && activeTask !== 'idle' && game.state.taskFatigue[activeTask] >= FATIGUE_REST_THRESHOLD) {
       game.selectTask('idle');
       const restSteps = Math.round(FATIGUE_REST_DURATION / DT);
       for (let r = 0; r < restSteps; r++) {
@@ -92,36 +92,116 @@ function runTick(game, seconds, task, taskTimes, tickCounter) {
   }
 }
 
+const DEFAULT_THRESHOLDS = {
+  code: { set: 0.05, reset: 0.05 },
+  debug: { set: 1.0, reset: 0.0 },
+  test: { set: 80.0, reset: 99.9 },
+  refactor: { set: 0.18, reset: 0.05 }, // relative to contract's initial complexity
+  autotest: { set: 30.0, reset: 60.0 }
+};
+
 /**
  * Simulates a single contract on the provided engine instance until it is
  * ready to ship, then ships it. Works for both tutorial and developer contracts.
  *
- * Priority order each tick:
- *   1. code   – if backlog remains
- *   2. test   – if coverage < 99.9%
- *   3. debug  – if revealed bugs exist
- *   4. refactor – if LOC > minLoc (opportunistic)
- *   5. autotest – if floor not capped
- *   6. idle   – nothing productive to do
+ * Uses hysteresis-based active task tracking:
+ *   1. debug    - highest priority
+ *   2. refactor
+ *   3. code
+ *   4. autotest
+ *   5. test     - lowest priority
  *
  * @returns {{ taskTimes, finalLoc, finalMinLoc }}
  */
-function simulateProject(game, contractIdx, tickCounter) {
+function simulateProject(game, contractIdx, tickCounter, thresholds = null, maxTicks = 4000) {
   const taskTimes = { idle: 0, code: 0, test: 0, debug: 0, refactor: 0, autotest: 0 };
 
   game.loadContract(contractIdx);
 
-  const MAX_TICKS = 4000; // 200s of game time — bail out fast if misconfigured
+  const MAX_TICKS = maxTicks; // bail out fast if misconfigured or custom limit reached
   let ticks = 0;
 
-  while (!game.isShipReady() && ticks < MAX_TICKS) {
-    let task;
-    if      (checkTaskPossible(game, 'code'))     task = 'code';
-    else if (checkTaskPossible(game, 'debug'))    task = 'debug';
-    else if (checkTaskPossible(game, 'test'))     task = 'test';
-    else if (checkTaskPossible(game, 'refactor')) task = 'refactor';
-    else if (checkTaskPossible(game, 'autotest')) task = 'autotest';
-    else                                          task = 'idle';
+  const initialComplexity = game.currentContract ? (game.currentContract.complexity || 1.0) : 1.0;
+
+  const activeTasks = {
+    code: false,
+    debug: false,
+    test: false,
+    refactor: false,
+    autotest: false
+  };
+
+  const isDevPhase = game.state.tutorialStep >= 6;
+  let activeThresholds = thresholds;
+  if (!activeThresholds) {
+    if (isDevPhase) {
+      activeThresholds = {
+        code: { set: 0.05, reset: 0.05 },
+        debug: { set: 1.0, reset: 0.0 },
+        test: { set: 99.9, reset: 99.9 },
+        refactor: { set: 0.50, reset: 0.05 },
+        autotest: { set: 80.0, reset: 95.0 }
+      };
+    } else {
+      activeThresholds = DEFAULT_THRESHOLDS;
+    }
+  }
+
+  const taskPriority = isDevPhase
+    ? ['debug', 'refactor', 'autotest', 'code', 'test']
+    : ['debug', 'refactor', 'code', 'autotest', 'test'];
+
+  const startTicks = tickCounter.count;
+  while (!game.isShipReady() && (tickCounter.count - startTicks) < MAX_TICKS) {
+    // 1. Update active states with set/reset thresholds
+    // Code
+    if (game.state.backlog > activeThresholds.code.set) {
+      activeTasks.code = true;
+    }
+    if (game.state.backlog <= activeThresholds.code.reset) {
+      activeTasks.code = false;
+    }
+
+    // Debug
+    if (game.state.revealedBugs >= activeThresholds.debug.set) {
+      activeTasks.debug = true;
+    }
+    if (game.state.revealedBugs <= activeThresholds.debug.reset) {
+      activeTasks.debug = false;
+    }
+
+    // Test
+    if (game.state.testCoverage < activeThresholds.test.set) {
+      activeTasks.test = true;
+    }
+    if (game.state.testCoverage >= activeThresholds.test.reset) {
+      activeTasks.test = false;
+    }
+
+    // Refactor (relative to contract initialComplexity)
+    if (game.state.complexity >= initialComplexity + activeThresholds.refactor.set) {
+      activeTasks.refactor = true;
+    }
+    if (game.state.complexity <= initialComplexity + activeThresholds.refactor.reset) {
+      activeTasks.refactor = false;
+    }
+
+    // Autotest
+    if (game.state.testCoverageFloor < activeThresholds.autotest.set) {
+      activeTasks.autotest = true;
+    }
+    if (game.state.testCoverageFloor >= activeThresholds.autotest.reset) {
+      activeTasks.autotest = false;
+    }
+
+    // 2. Choose highest priority task that is active AND possible
+    let task = 'idle';
+    for (const t of taskPriority) {
+      if (activeTasks[t] && checkTaskPossible(game, t)) {
+        task = t;
+        break;
+      }
+    }
 
     runTick(game, DT, task, taskTimes, tickCounter);
     ticks++;
@@ -130,9 +210,41 @@ function simulateProject(game, contractIdx, tickCounter) {
   const finalLoc    = game.state.loc;
   const finalMinLoc = game.state.minLoc;
 
-  game.shipProject();
+  const shipped = game.isShipReady();
+  if (shipped) {
+    game.shipProject();
+  }
 
-  return { taskTimes, finalLoc, finalMinLoc };
+  return { taskTimes, finalLoc, finalMinLoc, shipped };
+}
+
+// Upgrade purchase logic
+function buyAffordableUpgrades(g) {
+  const devUpgrades = [
+    { id: 'keyboard', costCash: 15, costXP: 30 },
+    { id: 'coffee', costCash: 30, costXP: 50 },
+    { id: 'linter', costCash: 50, costXP: 100 },
+    { id: 'copilot', costCash: 120, costXP: 250 },
+    { id: 'framework', costCash: 200, costXP: 400 }
+  ];
+  const tutUpgrades = [
+    { id: 'oss-ide', costCash: 0, costXP: 8 },
+    { id: 'install-linux', costCash: 0, costXP: 18 },
+    { id: 'touch-typing', costCash: 0, costXP: 38 },
+    { id: 'git-workflow', costCash: 0, costXP: 65 }
+  ];
+
+  for (const upg of tutUpgrades) {
+    if (!g.state.purchasedUpgrades.includes(upg.id) && g.state.xp >= upg.costXP) {
+      g.buyTutorialUpgrade(upg.id);
+    }
+  }
+
+  for (const upg of devUpgrades) {
+    if (!g.state.purchasedUpgrades.includes(upg.id) && g.state.cash >= upg.costCash && g.state.xp >= upg.costXP) {
+      g.buyUpgrade(upg.id);
+    }
+  }
 }
 
 // ─── Career simulation ────────────────────────────────────────────────────────
@@ -157,7 +269,7 @@ function simulateCareer() {
   for (let i = 0; i < TUTORIAL_PHASE.contracts.length; i++) {
     game.state.tutorialStep = tutorialSteps[i];
     const contractIdx = i;
-    const { taskTimes, finalLoc, finalMinLoc } = simulateProject(game, contractIdx, tickCounter);
+    const { taskTimes, finalLoc, finalMinLoc, shipped } = simulateProject(game, contractIdx, tickCounter);
 
     results.push({
       label:    `P${i + 1}: ${TUTORIAL_PHASE.contracts[i].title}`,
@@ -166,6 +278,7 @@ function simulateCareer() {
       total:    Object.values(taskTimes).reduce((a, b) => a + b, 0),
       loc:      finalLoc,
       minLoc:   finalMinLoc,
+      shipped:  shipped
     });
   }
 
@@ -174,8 +287,8 @@ function simulateCareer() {
 
   // ── Developer phase contracts ───────────────────────────────────────────────
   for (let i = 0; i < DEVELOPER_PHASE.contracts.length; i++) {
-    const contractIdx = TUTORIAL_PHASE.contracts.length + i;
-    const { taskTimes, finalLoc, finalMinLoc } = simulateProject(game, contractIdx, tickCounter);
+    buyAffordableUpgrades(game);
+    const { taskTimes, finalLoc, finalMinLoc, shipped } = simulateProject(game, i, tickCounter);
 
     results.push({
       label:    `D${i + 1}: ${DEVELOPER_PHASE.contracts[i].title}`,
@@ -184,6 +297,7 @@ function simulateCareer() {
       total:    Object.values(taskTimes).reduce((a, b) => a + b, 0),
       loc:      finalLoc,
       minLoc:   finalMinLoc,
+      shipped:  shipped
     });
   }
 
@@ -197,18 +311,18 @@ if (require.main === module) {
 
   const tableData = results.map(r => {
     const row = {
-      'Project':        r.label,
-      'Code (s)':       r.code.toFixed(2),
-      'Test (s)':       r.test.toFixed(2),
-      'Debug (s)':      r.debug.toFixed(2),
-      'Refactor (s)':   r.refactor.toFixed(2),
-      'Unit Tests (s)': r.autotest.toFixed(2),
-      'Idle (s)':       r.idle.toFixed(2),
-      'Total (s)':      r.total.toFixed(2),
-      'LOC':            r.loc.toFixed(1),
-      'Min LOC':        r.minLoc.toFixed(1),
+      'Project':    r.label,
+      'LOC':        r.loc.toFixed(1),
+      'Min LOC':    r.minLoc.toFixed(1),
+      'Code':       r.code.toFixed(2),
+      'Test':       r.test.toFixed(2),
+      'Debug':      r.debug.toFixed(2),
+      'Refactor':   r.refactor.toFixed(2),
+      'Unit Tests': r.autotest.toFixed(2),
+      'Idle':       r.idle.toFixed(2),
+      'Total':      r.shipped ? r.total.toFixed(2) : 'TIMEOUT',
     };
-    if (r.target !== null) row['Target (s)'] = r.target.toFixed(2);
+    if (r.target !== null) row['Target'] = r.target.toFixed(2);
     return row;
   });
 
@@ -219,21 +333,21 @@ if (require.main === module) {
     console.table(tableData);
     console.log('=========================================================================================\n');
   } else {
-    const headers = ['Project', 'Code (s)', 'Test (s)', 'Debug (s)', 'Refactor (s)', 'Unit Tests (s)', 'Idle (s)', 'Total (s)', 'LOC', 'Min LOC', 'Target (s)'];
+    const headers = ['Project', 'LOC', 'Min LOC', 'Code', 'Test', 'Debug', 'Refactor', 'Unit Tests', 'Idle', 'Total', 'Target'];
     console.log('| ' + headers.join(' | ') + ' |');
     console.log('| ' + headers.map(h => (h === 'Project' ? ':---' : ':---:')).join(' | ') + ' |');
     results.forEach(r => {
       const row = [
         r.label,
+        r.loc.toFixed(1),
+        r.minLoc.toFixed(1),
         r.code.toFixed(2),
         r.test.toFixed(2),
         r.debug.toFixed(2),
         r.refactor.toFixed(2),
         r.autotest.toFixed(2),
         r.idle.toFixed(2),
-        r.total.toFixed(2),
-        r.loc.toFixed(1),
-        r.minLoc.toFixed(1),
+        r.shipped ? r.total.toFixed(2) : 'TIMEOUT',
         r.target !== null ? r.target.toFixed(2) : '-',
       ];
       console.log('| ' + row.join(' | ') + ' |');

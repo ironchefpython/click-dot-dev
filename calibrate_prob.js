@@ -11,13 +11,13 @@ const configs = [
   // P1: Hello World
   { backlog: 4, difficulty: 1.0, complexity: 1.0, growthScale: 0, transitionOffset: 0, featureCompleteProb: 1.0, bugfixClearProb: 1.0, baseBugRate: 0.0 },
   // P2: Calculator
-  { backlog: 5, difficulty: 1.5, complexity: 1.0, growthScale: 5, transitionOffset: 2, featureCompleteProb: 0.14, bugfixClearProb: 0.14, baseBugRate: 0.05 },
+  { backlog: 5, difficulty: 1.5, complexity: 1.0, growthScale: 5, transitionOffset: 2, featureCompleteProb: 0.57, bugfixClearProb: 0.57, baseBugRate: 0.05 },
   // P3: Todo
-  { backlog: 5, difficulty: 2.0, complexity: 1.1, growthScale: 8, transitionOffset: 3, featureCompleteProb: 0.21, bugfixClearProb: 0.21, baseBugRate: 0.05 },
+  { backlog: 5, difficulty: 2.0, complexity: 1.1, growthScale: 5, transitionOffset: 2, featureCompleteProb: 0.56, bugfixClearProb: 0.56, baseBugRate: 0.05 },
   // P4: Weather
-  { backlog: 8, difficulty: 2.5, complexity: 1.1, growthScale: 10, transitionOffset: 5, featureCompleteProb: 0.20, bugfixClearProb: 0.20, baseBugRate: 0.05 },
+  { backlog: 8, difficulty: 2.5, complexity: 1.1, growthScale: 6, transitionOffset: 4, featureCompleteProb: 0.39, bugfixClearProb: 0.39, baseBugRate: 0.05 },
   // P5: Ecommerce
-  { backlog: 10, difficulty: 3.0, complexity: 1.2, growthScale: 15, transitionOffset: 7, featureCompleteProb: 0.145, bugfixClearProb: 0.145, baseBugRate: 0.05 }
+  { backlog: 10, difficulty: 3.0, complexity: 1.2, growthScale: 15, transitionOffset: 7, featureCompleteProb: 0.49, bugfixClearProb: 0.49, baseBugRate: 0.05 }
 ];
 
 // Each value is the fully-unlocked tutorialStep for that project.

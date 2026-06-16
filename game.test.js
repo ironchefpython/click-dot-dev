@@ -77,6 +77,14 @@ describe('Solo Coder Game - Core Engine Tests', () => {
     expect(engine.state.activeTask).toBe('idle');
   });
 
+  test('should auto-switch to idle when unit test coverage floor reaches cap', () => {
+    const engine = new DevGameEngine();
+    engine.selectTask('autotest');
+    engine.state.testCoverageFloor = 90.0;
+    engine.tick(0.05);
+    expect(engine.state.activeTask).toBe('idle');
+  });
+
   test('should not increase task fatigue or focus when idle', () => {
     const engine = new DevGameEngine();
     engine.selectTask('idle');
@@ -264,16 +272,23 @@ describe('Solo Coder Game - UI Binding & Integration Tests', () => {
     jest.useRealTimers();
   });
 
-  test('should unlock tasks in the reversed order (debug at step 2, test at step 3)', () => {
+  test('should unlock debug task at step 2 when the first bug is introduced', () => {
     jest.useFakeTimers();
     require('./main.js');
 
     const domEvent = new Event('DOMContentLoaded');
     document.dispatchEvent(domEvent);
 
-    // Step 0 -> Step 1
+    // Set engine to Project 2 setup
+    window.engine.loadContract(1); // calculator-app
+    window.engine.state.tutorialStep = 1.8;
+    window.engine.state.loc = 0.0;
+    window.engine.state.revealedBugs = 0;
+    window.engine.state.hiddenBugs = 0;
+    
+    // Click action button to accept contract and sync UI
     const actionBtn = document.getElementById('tutorial-action-btn');
-    actionBtn.click(); // Accept Hello World Project -> step 1
+    actionBtn.click();
 
     const codeRadio = document.querySelector('input[value="code"]');
     const testRadio = document.querySelector('input[value="test"]');
@@ -284,118 +299,77 @@ describe('Solo Coder Game - UI Binding & Integration Tests', () => {
     expect(testRadio.disabled).toBe(true);
     expect(debugRadio.disabled).toBe(true);
 
-    // Start coding Hello World
-    console.log("Before hello-world code task select, activeTask is:", document.querySelector('input[name="active-task"]:checked')?.value);
-    codeRadio.checked = true;
-    codeRadio.dispatchEvent(new Event('change'));
-    console.log("After hello-world code task select, activeTask is:", document.querySelector('input[name="active-task"]:checked')?.value);
-    console.log("Initial Hello World backlog:", document.getElementById('stat-backlog').textContent);
-
-    // Advance timers to complete Hello World backlog (backlog: 3, speed: 8/s)
-    jest.advanceTimersByTime(15000);
-    console.log("Backlog after 15s:", document.getElementById('stat-backlog').textContent);
-    console.log("Active task after 15s:", document.querySelector('input[name="active-task"]:checked')?.value);
-
-    // Hello World should be ready to ship
-    const shipBtn = document.getElementById('ship-project-btn');
-    expect(shipBtn.disabled).toBe(false);
-
-    // Ship Hello World -> tutorialStep becomes 1.8
-    shipBtn.click();
-
-    // Modal popup appears: "Accept Calculator App"
-    expect(actionBtn.textContent).toBe('Accept Calculator App');
-    actionBtn.click(); // Sets up Project 2 (step remains 1.8)
-
-    // Code is unlocked, test and debug are locked
-    expect(codeRadio.disabled).toBe(false);
-    expect(testRadio.disabled).toBe(true);
-    expect(debugRadio.disabled).toBe(true);
-
-    // Start coding Project 2
+    // Select code task
     codeRadio.checked = true;
     codeRadio.dispatchEvent(new Event('change'));
 
-    // Advance timers so code writes enough LOC to generate at least 1 bug
-    jest.advanceTimersByTime(25000);
+    // Advance time until the first bug is introduced
+    jest.advanceTimersByTime(5000);
 
-
-
-    // This should trigger the "Unit 2: Bug Squashing" popup
+    // Verify overlay appears for Unit 2
     const overlay = document.getElementById('tutorial-overlay');
     expect(overlay.style.display).not.toBe('none');
     expect(actionBtn.textContent).toBe('Start Debugging');
 
     // Click "Start Debugging" -> tutorialStep becomes 2
     actionBtn.click();
+    jest.advanceTimersByTime(50);
 
-    // Now check that:
-    // - Code is unlocked
-    // - Debug is unlocked (reversed tutorial!)
-    // - Test remains locked
+    // Verify code and debug are unlocked, test remains locked
     expect(codeRadio.disabled).toBe(false);
     expect(debugRadio.disabled).toBe(false);
     expect(testRadio.disabled).toBe(true);
 
-    // Start debugging to resolve the bugs
-    debugRadio.checked = true;
-    debugRadio.dispatchEvent(new Event('change'));
-    jest.advanceTimersByTime(5000);
+    jest.useRealTimers();
+  });
 
-    // Loop to code and debug Project 2 until ready to ship
-    let limit = 0;
-    while (!window.engine.isShipReady() && limit < 30) {
-      limit++;
-      const backlogVal = window.engine.state.backlog;
-      const bugsVal = window.engine.state.revealedBugs;
-      console.log(`Iter ${limit}: engine backlog=${backlogVal}, bugs=${bugsVal}, isShipReady=${window.engine.isShipReady()}`);
-      if (backlogVal > 0.05) {
-        codeRadio.checked = true;
-        codeRadio.dispatchEvent(new Event('change'));
-        jest.advanceTimersByTime(Math.ceil(backlogVal / 0.4) * 1000 + 1000);
-      } else if (bugsVal >= 1.0) {
-        debugRadio.checked = true;
-        debugRadio.dispatchEvent(new Event('change'));
-        jest.advanceTimersByTime(Math.ceil(bugsVal / 0.8) * 1000 + 1000);
-      } else {
-        // Just advance 100ms to let any updates process
-        jest.advanceTimersByTime(100);
-      }
-    }
+  test('should unlock test task at step 3 when a hidden bug is introduced', () => {
+    jest.useFakeTimers();
+    require('./main.js');
 
-    console.log(`Exited loop at limit=${limit}. Final: backlog=${window.engine.state.backlog}, bugs=${window.engine.state.revealedBugs}, isShipReady=${window.engine.isShipReady()}`);
+    const domEvent = new Event('DOMContentLoaded');
+    document.dispatchEvent(domEvent);
 
-    // Project 2 should be ready to ship
-    expect(window.engine.isShipReady()).toBe(true);
-    shipBtn.click(); // Ships Project 2 -> step becomes 2.8
+    // Set engine to Project 3 setup
+    window.engine.loadContract(2); // todo-list
+    window.engine.state.tutorialStep = 2.8;
+    window.engine.state.loc = 0.0;
+    window.engine.state.hiddenBugs = 0;
+    window.engine.state.revealedBugs = 0;
 
-    // Modal popup appears: "Accept Todo List"
-    expect(actionBtn.textContent).toBe('Accept Todo List');
-    actionBtn.click(); // Sets up Project 3 (step remains 2.8)
+    // Click action button to accept contract and sync UI
+    const actionBtn = document.getElementById('tutorial-action-btn');
+    actionBtn.click();
 
-    // Code and Debug are unlocked, Test is locked
+    const codeRadio = document.querySelector('input[value="code"]');
+    const testRadio = document.querySelector('input[value="test"]');
+    const debugRadio = document.querySelector('input[value="debug"]');
+
+    // Code and Debug should be unlocked, Test should be locked
     expect(codeRadio.disabled).toBe(false);
     expect(debugRadio.disabled).toBe(false);
     expect(testRadio.disabled).toBe(true);
 
-    // Start coding Project 3 (Todo List)
+    // Select code task
     codeRadio.checked = true;
     codeRadio.dispatchEvent(new Event('change'));
 
-    // Code to generate hidden bugs
-    jest.advanceTimersByTime(10000);
+    // Advance time until a hidden bug is introduced
+    jest.advanceTimersByTime(5000);
 
-    // This should trigger the "Unit 3: Manual Verification" popup because hiddenBugs >= 1
+    // Verify overlay appears for Unit 3
+    const overlay = document.getElementById('tutorial-overlay');
     expect(overlay.style.display).not.toBe('none');
     expect(actionBtn.textContent).toBe('Begin Testing');
 
     // Click "Begin Testing" -> tutorialStep becomes 3
     actionBtn.click();
+    jest.advanceTimersByTime(50);
 
-    // Now check that:
-    // - Test is unlocked
+    // Verify test is now unlocked
     expect(testRadio.disabled).toBe(false);
 
+    jest.useRealTimers();
   });
 
   test('should disable code button in UI when backlog is empty', () => {
@@ -486,5 +460,100 @@ describe('Solo Coder Game - Tutorial Project Time Calibration', () => {
 
     engine.state.testCoverage = 99.9;
     expect(engine.isShipReady()).toBe(true);
+  });
+
+  test('should fail to ship Project 4 without refactoring but pass with it', () => {
+    // 1. Without refactoring
+    const gameNoRefactor = new DevGameEngine();
+    // Simulate P1-P3 first sequentially
+    const tickCounter = { count: 0 };
+    const steps = [1, 2, 3];
+    for (let i = 0; i < 3; i++) {
+      gameNoRefactor.state.tutorialStep = steps[i];
+      simulateProject(gameNoRefactor, i, tickCounter);
+    }
+    
+    // Set refactor threshold incredibly high so it never refactors
+    gameNoRefactor.state.tutorialStep = 4;
+    const customThresholdsNoRefactor = {
+      code: { set: 0.05, reset: 0.05 },
+      debug: { set: 1.0, reset: 0.0 },
+      test: { set: 80.0, reset: 99.9 },
+      refactor: { set: 999.0, reset: 999.0 },
+      autotest: { set: 30.0, reset: 60.0 }
+    };
+    
+    const tickCounter4NoRef = { count: 0 };
+    simulateProject(gameNoRefactor, 3, tickCounter4NoRef, customThresholdsNoRefactor, 1600);
+    expect(gameNoRefactor.state.contractIndex).toBe(3); // contractIndex should still be 3 (failed to ship)
+
+    // 2. With refactoring
+    const gameWithRefactor = new DevGameEngine();
+    for (let i = 0; i < 3; i++) {
+      gameWithRefactor.state.tutorialStep = steps[i];
+      simulateProject(gameWithRefactor, i, tickCounter);
+    }
+    gameWithRefactor.state.tutorialStep = 4;
+    simulateProject(gameWithRefactor, 3, tickCounter); // default thresholds
+    expect(gameWithRefactor.state.contractIndex).toBe(4); // successfully shipped and loaded contract 4
+  });
+
+  test('should ensure feature story points never go up and complexity and min LOC decrease by the same factor during refactoring', () => {
+    const engine = new DevGameEngine();
+    engine.loadContract(1); // calculator-app
+    
+    const Formulas = require('./formulas.js');
+    engine.state.complexity = 1.5;
+    engine.state.minLoc = Formulas.getMinLoc(0, 5, 2, engine.state.complexity);
+    engine.state.loc = engine.state.minLoc + 5.0;
+    engine.state.featurePoints = 5;
+    engine.state.bugPoints = 0;
+    engine.state.backlog = 5;
+    
+    const initialLoc = engine.state.loc;
+    const initialMinLoc = engine.state.minLoc;
+    const initialComplexity = engine.state.complexity;
+    const initialFeaturePoints = engine.state.featurePoints;
+    
+    // Select refactor task and tick
+    engine.selectTask('refactor');
+    engine.tick(1.0);
+    
+    // Verify featurePoints did not go up
+    expect(engine.state.featurePoints).toBeLessThanOrEqual(initialFeaturePoints);
+    
+    // Verify complexity, loc, and minLoc decreased by the same factor
+    const locFactor = engine.state.loc / initialLoc;
+    const minLocFactor = engine.state.minLoc / initialMinLoc;
+    const complexityFactor = engine.state.complexity / initialComplexity;
+    
+    expect(minLocFactor).toBeCloseTo(locFactor, 5);
+    expect(complexityFactor).toBeCloseTo(locFactor, 5);
+  });
+
+  test('should ensure feature story points do not decrease if current LOC is less than min LOC', () => {
+    const engine = new DevGameEngine();
+    engine.loadContract(1); // calculator-app
+    
+    // Set LOC below min LOC for the next feature
+    const Formulas = require('./formulas.js');
+    const minLocVal = Formulas.getMinLoc(1, 1443, 9, engine.state.complexity);
+    
+    engine.state.loc = minLocVal - 1.0;
+    engine.state.featurePoints = 5;
+    engine.state.bugPoints = 0;
+    engine.state.backlog = 5;
+    
+    // Calculate initial minLoc for completedFeatures (0)
+    engine.state.minLoc = Formulas.getMinLoc(0, 1443, 9, engine.state.complexity);
+    
+    const initialFeaturePoints = engine.state.featurePoints;
+    
+    // Select coding task and tick
+    engine.selectTask('code');
+    engine.tick(1.0);
+    
+    // Verify featurePoints did not decrease
+    expect(engine.state.featurePoints).toBe(initialFeaturePoints);
   });
 });

@@ -55,6 +55,7 @@ class DevGameEngine {
       testCoverageFloor: 0,
       minLoc: 0,
       complexity: 1.0,
+      manualTestFactor: 1.0,
       activeTask: 'idle',
       taskFatigue: {
         idle: 0,
@@ -146,8 +147,11 @@ class DevGameEngine {
     this.state.loc = 0;
     this.state.hiddenBugs = 0;
     this.state.revealedBugs = 0;
-    this.state.minLoc = 0;
-    this.state.complexity = this.currentContract.complexity || 1.0;
+    const growthScale = this.currentContract.growthScale !== undefined ? this.currentContract.growthScale : 1443;
+    const transitionOffset = this.currentContract.transitionOffset !== undefined ? this.currentContract.transitionOffset : 9;
+    this.state.complexity = this.currentContract.complexity !== undefined ? this.currentContract.complexity : 1.0;
+    this.state.manualTestFactor = this.currentContract.manualTestFactor !== undefined ? this.currentContract.manualTestFactor : 1.0;
+    this.state.minLoc = Formulas.getMinLoc(0, growthScale, transitionOffset, this.state.complexity);
     // Set initial test coverage to the current floor
     this.state.testCoverage = this.state.testCoverageFloor;
     this.state.activeTask = 'idle';
@@ -187,6 +191,7 @@ class DevGameEngine {
     const prevLoc = Math.floor(this.state.loc);
     const prevCoverageFloat = this.state.testCoverage;
     const prevCoverageFloorFloat = this.state.testCoverageFloor;
+    const prevCompletedFeatures = this.currentContract ? Math.round(this.currentContract.backlog) - this.state.featurePoints : 0;
 
     // 1. Fatigue updates for all tasks
     const hasCoffee = this.state.purchasedUpgrades.includes('coffee');
@@ -195,37 +200,32 @@ class DevGameEngine {
     for (let key in this.state.taskFatigue) {
       if (key === this.state.activeTask) {
         if (key !== 'idle') {
-          const complexityMultiplier = this.state.complexity || 1.0;
-          this.state.taskFatigue[key] += dt * complexityMultiplier;
+           const fatigueGain = Formulas.calculateFatigueGain(this.state.complexity, dt);
+           this.state.taskFatigue[key] = Math.min(40.0, this.state.taskFatigue[key] + fatigueGain);
         } else {
           this.state.taskFatigue[key] = 0;
         }
       } else {
-        this.state.taskFatigue[key] = Math.max(0, this.state.taskFatigue[key] - decayRate * dt);
+        const isActiveIdle = (this.state.activeTask === 'idle');
+        this.state.taskFatigue[key] = Formulas.calculateFatigueDecay(this.state.taskFatigue[key], decayRate, isActiveIdle, dt);
       }
     }
 
     // 2. Efficiency calculations
     let activeFatigueTime = this.state.taskFatigue[this.state.activeTask];
+    let displayFatigueTime = activeFatigueTime;
+    if (this.state.activeTask === 'idle') {
+      displayFatigueTime = Math.max(...Object.values(this.state.taskFatigue));
+    }
+
     const hasCopilot = this.state.purchasedUpgrades.includes('copilot');
     const hasTutTyping = this.state.purchasedUpgrades.includes('touch-typing');
     let kFocusModifier = hasCopilot ? 1.5 : 1.0;
     if (hasTutTyping) kFocusModifier *= 1.5; // touch-typing: +50% focus build-up
 
-    let focusVal = K_FOCUS * activeFatigueTime * kFocusModifier;
-    let fatigueVal = K_FATIGUE * (Math.exp(LAMBDA * activeFatigueTime) - 1);
-    let efficiency;
-    if (this.state.tutorialStep < 6) {
-      const projectNum = Math.min(5, Math.max(1, Math.floor(this.state.tutorialStep)));
-      // Base efficiency scales linearly: P1 → 0.10, P5 → 1.00
-      // Max efficiency = 2 × base:       P1 → 0.20, P5 → 2.00
-      const baseEff = 0.10 + (projectNum - 1) * (0.90 / 4);
-      const maxFocusBonus = baseEff; // cap so max = 2× base
-      focusVal = Math.min(focusVal, maxFocusBonus);
-      efficiency = Math.max(0.01, baseEff + focusVal - fatigueVal);
-    } else {
-      efficiency = Math.max(0.1, 1 + focusVal - fatigueVal);
-    }
+    let focusVal = Formulas.calculateFocusVal(K_FOCUS, activeFatigueTime, kFocusModifier);
+    let fatigueVal = this.state.tutorialStep < 6 ? 0.0 : Formulas.calculateFatigueVal(K_FATIGUE, LAMBDA, displayFatigueTime);
+    let efficiency = Formulas.calculateEfficiency(this.state.tutorialStep, focusVal, fatigueVal);
 
     // 3. Process active task
     let isTaskProcessed = false;
@@ -237,6 +237,12 @@ class DevGameEngine {
         this.selectTask('idle');
       } else if (this.state.activeTask === 'debug' && this.state.revealedBugs <= 0.05) {
         this.selectTask('idle');
+      } else if (this.state.activeTask === 'autotest') {
+        const hasTutGit = this.state.purchasedUpgrades.includes('git-workflow');
+        const tutGitFloorCap = hasTutGit ? 95 : 90;
+        if (this.state.testCoverageFloor >= tutGitFloorCap) {
+          this.selectTask('idle');
+        }
       }
       
       if (this.isShipReady()) {
@@ -311,6 +317,19 @@ class DevGameEngine {
       this.dispatchEvent('testCoverageFloorIncreased', { testCoverageFloor: this.state.testCoverageFloor });
     }
 
+    // Recalculate minLoc and complexity at the end of the tick
+    const growthScale = this.currentContract ? (this.currentContract.growthScale !== undefined ? this.currentContract.growthScale : 1443) : 1443;
+    const transitionOffset = this.currentContract ? (this.currentContract.transitionOffset !== undefined ? this.currentContract.transitionOffset : 9) : 9;
+    
+    totalFeatures = this.currentContract ? Math.round(this.currentContract.backlog) : 0;
+    completedFeatures = totalFeatures - this.state.featurePoints;
+
+    if (this.state.loc <= 0) {
+      this.state.complexity = this.currentContract ? (this.currentContract.complexity || 1.0) : 1.0;
+    }
+    
+    this.state.minLoc = Formulas.getMinLoc(completedFeatures, growthScale, transitionOffset, this.state.complexity);
+
     this.dispatchEvent('tick', { dt });
 
     return {
@@ -339,7 +358,6 @@ class DevGameEngine {
     const complexityFactor = hasFramework ? 0.7 : 1.0;
     // Tutorial speed bonuses
     const tutCodeBoost = hasTutOSSIDE ? 1.3 : 1.0;
-    const tutDebugTestBoost = hasTutLinux ? 1.2 : 1.0;
     const tutGitAutoBoost = hasTutGit ? 1.25 : 1.0;
     const tutGitFloorCap = hasTutGit ? 95 : 90;
 
@@ -347,7 +365,7 @@ class DevGameEngine {
       if (this.state.backlog <= 0) return false;
 
       let speedMultiplier = this.getCodingSpeedMultiplier();
-      let newLoc = BASE_CODE_SPEED * efficiency * keyboardBoost * tutCodeBoost * speedMultiplier * dt;
+      let newLoc = Formulas.calculateNewLoc(BASE_CODE_SPEED, efficiency, keyboardBoost, tutCodeBoost, speedMultiplier, dt);
 
       // For Hello World, cap loc at exactly 4.0 to make it perfectly deterministic
       if (this.currentContract && this.currentContract.id === 'course-hello') {
@@ -377,7 +395,7 @@ class DevGameEngine {
       if (completedIntegers > 0) {
         for (let i = 0; i < completedIntegers; i++) {
           // 1. Increase complexity using formulas.js increment
-          this.state.complexity += Formulas.getComplexityIncrement();
+          this.state.complexity += Formulas.getComplexityIncrement(this.state.tutorialStep);
 
           // 2. Bug introduction check
           let complexityMultiplier = 1 + (this.state.loc / 450) * complexityFactor;
@@ -425,7 +443,7 @@ class DevGameEngine {
             let minLocVal = Formulas.getMinLoc(n, growthScale, transitionOffset, this.state.complexity);
             let currentIntLoc = prevFloor + i + 1;
 
-            if (currentIntLoc >= minLocVal) {
+            if (currentIntLoc >= minLocVal && this.state.loc >= this.state.minLoc) {
               let featureCompleteProb = this.currentContract ? (this.currentContract.featureCompleteProb !== undefined ? this.currentContract.featureCompleteProb : (1.0 / difficulty)) : (1.0 / difficulty);
               
               // Hello World override to be 100% deterministic
@@ -435,8 +453,10 @@ class DevGameEngine {
 
               this.state.featureCompleteProgress = (this.state.featureCompleteProgress || 0.0) + featureCompleteProb;
               if (this.state.featureCompleteProgress >= 1.0) {
-                this.state.featureCompleteProgress -= 1.0;
-                this.state.featurePoints = Math.max(0, this.state.featurePoints - 1);
+                if (this.state.loc >= this.state.minLoc) {
+                  this.state.featureCompleteProgress -= 1.0;
+                  this.state.featurePoints = Math.max(0, this.state.featurePoints - 1);
+                }
               }
             }
           }
@@ -452,12 +472,13 @@ class DevGameEngine {
     } 
     
     else if (task === 'test') {
-      let testSpeed = Formulas.calculateManualTestSpeed(BASE_TEST_SPEED, efficiency, tutDebugTestBoost, this.state.testCoverage, this.state.loc) * dt;
+      const manualTestFactor = this.state.manualTestFactor !== undefined ? this.state.manualTestFactor : 1.0;
+      let testSpeed = Formulas.calculateManualTestSpeed(BASE_TEST_SPEED, efficiency, manualTestFactor, this.state.testCoverage, this.state.loc) * dt;
       this.state.testCoverage = Math.min(100, this.state.testCoverage + testSpeed * 100);
 
       // Reveal bugs deterministically
       if (this.state.hiddenBugs > 0) {
-        let pReveal = Formulas.calculateRevealProb(efficiency, tutDebugTestBoost, dt);
+        let pReveal = Formulas.calculateRevealProb(efficiency, manualTestFactor, dt);
         this.state.revealProgress = (this.state.revealProgress || 0.0) + pReveal;
         if (this.state.revealProgress >= 1.0) {
           this.state.revealProgress -= 1.0;
@@ -471,7 +492,7 @@ class DevGameEngine {
     else if (task === 'debug') {
       if (this.state.revealedBugs <= 0) return false;
 
-      let pDebug = Formulas.calculateDebugProb(efficiency, tutDebugTestBoost, dt);
+      let pDebug = Formulas.calculateDebugProb(efficiency, dt);
       this.state.debugProgress = (this.state.debugProgress || 0.0) + pDebug;
       if (this.state.debugProgress >= 1.0) {
         this.state.debugProgress -= 1.0;
@@ -495,11 +516,13 @@ class DevGameEngine {
 
       let refactorSpeed = BASE_REFACTOR_SPEED * efficiency * frameworkBoost * dt;
       let refactorAmt = Math.min(this.state.loc - this.state.minLoc, refactorSpeed);
+      
+      const locOld = this.state.loc;
       this.state.loc -= refactorAmt;
-
-      // Reduce complexity proportional to refactored LOC and current complexity
+      const f = this.state.loc / locOld;
+      
       const initialComplexity = this.currentContract ? (this.currentContract.complexity || 1.0) : 1.0;
-      this.state.complexity = Math.max(initialComplexity, this.state.complexity - Formulas.getComplexityIncrement() * refactorAmt * this.state.complexity);
+      this.state.complexity = Math.max(initialComplexity, this.state.complexity * f);
 
       this.state.testCoverage = Math.max(this.state.testCoverageFloor, this.state.testCoverage - refactorAmt * 0.15);
       return true;

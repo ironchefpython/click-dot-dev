@@ -81,9 +81,11 @@
     /**
      * Increment applied to complexity per integer LOC completed.
      */
-    getComplexityIncrement() {
-      // 0.005 avoids mathematical feedback lock in minLoc calculations.
-      return 0.005;
+    getComplexityIncrement(tutorialStep) {
+      if (tutorialStep !== undefined && tutorialStep < 6) {
+        return 0.005;
+      }
+      return 0.0001;
     },
     
     /**
@@ -97,25 +99,25 @@
     /**
      * Probability of revealing a hidden bug in a single tick.
      */
-    calculateRevealProb(efficiency, tutDebugTestBoost, dt) {
-      return Math.min(1.0, 0.40 * efficiency * tutDebugTestBoost * dt);
+    calculateRevealProb(efficiency, manualTestFactor, dt) {
+      return Math.min(1.0, (0.40 * efficiency * dt) / manualTestFactor);
     },
     
     /**
      * Probability of debugging a revealed bug in a single tick.
      */
-    calculateDebugProb(efficiency, tutDebugTestBoost, dt) {
-      return Math.min(1.0, 0.50 * efficiency * tutDebugTestBoost * dt);
+    calculateDebugProb(efficiency, dt) {
+      return Math.min(1.0, 0.50 * efficiency * dt);
     },
 
     /**
      * Manual testing coverage growth speed per tick, proportional to LOC.
      */
-    calculateManualTestSpeed(baseSpeed, efficiency, tutDebugTestBoost, coverage, loc) {
+    calculateManualTestSpeed(baseSpeed, efficiency, manualTestFactor, coverage, loc) {
       const scaleLoc = Math.max(1.0, loc);
-      const coverageRemainingRatio = (100 - coverage) / 100;
+      const coverageRemainingRatio = 3 * (100 - coverage) / 100 + 1;
       const baselineLoc = 10.0;
-      return (baseSpeed * efficiency * tutDebugTestBoost * coverageRemainingRatio * baselineLoc) / scaleLoc;
+      return (baseSpeed * efficiency * coverageRemainingRatio * baselineLoc) / (scaleLoc * manualTestFactor);
     },
 
     /**
@@ -134,6 +136,66 @@
       const valuePerFeature = 10.0;
       const penaltyPerBug = 15.0;
       return Math.max(0, completedFeatures * valuePerFeature - totalBugs * penaltyPerBug);
+    },
+
+    /**
+     * Calculates task fatigue increase per tick based on the current complexity, capped at a maximum of 25.0 complexity multiplier.
+     */
+    calculateFatigueGain(complexity, dt) {
+      const complexityMultiplier = Math.min(25.0, complexity || 1.0);
+      return dt * complexityMultiplier;
+    },
+
+    /**
+     * Calculates task fatigue decay per tick, applying a 2x decay boost if the active task is 'idle'.
+     */
+    calculateFatigueDecay(currentFatigue, decayRate, isActiveIdle, dt) {
+      const currentDecay = isActiveIdle ? (decayRate * 2.0) : decayRate;
+      return Math.max(0, currentFatigue - currentDecay * dt);
+    },
+
+    /**
+     * Calculates the focus value based on task fatigue time and focus modifiers.
+     */
+    calculateFocusVal(K_FOCUS, activeFatigueTime, kFocusModifier) {
+      return K_FOCUS * activeFatigueTime * kFocusModifier;
+    },
+
+    /**
+     * Calculates the exponential fatigue value penalty based on display fatigue time.
+     */
+    calculateFatigueVal(K_FATIGUE, LAMBDA, displayFatigueTime) {
+      return K_FATIGUE * (Math.exp(LAMBDA * displayFatigueTime) - 1);
+    },
+
+    /**
+     * Calculates developer efficiency based on tutorial step status, focus, and fatigue.
+     */
+    calculateEfficiency(tutorialStep, focusVal, fatigueVal) {
+      if (tutorialStep < 6) {
+        const projectNum = Math.min(5, Math.max(1, Math.floor(tutorialStep)));
+        const baseEff = 0.10 + (projectNum - 1) * (0.90 / 4);
+        const maxFocusBonus = baseEff; // cap so max = 2× base
+        const cappedFocusVal = Math.min(focusVal, maxFocusBonus);
+        return Math.max(0.01, baseEff + cappedFocusVal - fatigueVal);
+      } else {
+        return Math.max(0.1, 1 + focusVal - fatigueVal);
+      }
+    },
+
+    /**
+     * Calculates the new LOC written/completed in a single tick.
+     */
+    calculateNewLoc(baseSpeed, efficiency, keyboardBoost, tutCodeBoost, speedMultiplier, dt) {
+      return baseSpeed * efficiency * keyboardBoost * tutCodeBoost * speedMultiplier * dt;
+    },
+
+    /**
+     * Calculates complexity reduction proportional to refactoring amount and current complexity.
+     */
+    calculateComplexityAfterRefactor(currentComplexity, initialComplexity, refactorAmt) {
+      const complexityIncrement = 0.005; // Formulas.getComplexityIncrement()
+      return Math.max(initialComplexity, currentComplexity - complexityIncrement * refactorAmt * currentComplexity);
     }
   };
 
