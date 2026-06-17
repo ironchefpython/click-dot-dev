@@ -668,6 +668,7 @@ class DevGameEngine {
   }
 
   skipTutorial() {
+    this.state.purchasedUpgrades = ['oss-ide', 'install-linux', 'touch-typing', 'git-workflow'];
     this.state.tutorialStep = 6;
     this.state.cash = 10.0;
     this.state.xp = 0;
