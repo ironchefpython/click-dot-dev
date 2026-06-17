@@ -1,107 +1,44 @@
 (function() {
   // Import dependencies for Node.js test environments
   let DevGameEngine, CONTRACTS, TUTORIAL_PHASE, DEVELOPER_PHASE, BUSINESS_PHASE, Formulas;
+  let createLineGenerator, codeGrammar, testGrammar, bugfixGrammar, refactorGrammar, autotestGrammar;
+
   if (typeof require !== 'undefined') {
-  const engineMod = require('./engine.js');
-  DevGameEngine = engineMod.DevGameEngine;
-  CONTRACTS = engineMod.CONTRACTS;
-  TUTORIAL_PHASE = require('./phase-tutorial.js');
-  DEVELOPER_PHASE = require('./phase-developer.js');
-  BUSINESS_PHASE = require('./phase-business.js');
-  Formulas = require('./formulas.js');
-} else {
-  DevGameEngine = window.DevGameEngine;
-  CONTRACTS = window.CONTRACTS;
-  TUTORIAL_PHASE = window.TUTORIAL_PHASE;
-  DEVELOPER_PHASE = window.DEVELOPER_PHASE;
-  BUSINESS_PHASE = window.BUSINESS_PHASE;
-  Formulas = window.Formulas;
-}
+    const engineMod = require('./engine.js');
+    DevGameEngine = engineMod.DevGameEngine;
+    CONTRACTS = engineMod.CONTRACTS;
+    TUTORIAL_PHASE = require('./phase-tutorial.js');
+    DEVELOPER_PHASE = require('./phase-developer.js');
+    BUSINESS_PHASE = require('./phase-business.js');
+    Formulas = require('./formulas.js');
 
-// Scrolling Text Libraries for terminal simulation
-const CODE_LINES = [
-  "const express = require('express');",
-  "const app = express();",
-  "app.use(express.json());",
-  "const stripe = require('stripe')(process.env.STRIPE_KEY);",
-  "// Get bakery inventory",
-  "app.get('/api/products', (req, res) => {",
-  "  const db = getDatabaseConnection();",
-  "  db.query('SELECT * FROM inventory', (err, rows) => {",
-  "    if (err) return res.status(500).json({ error: err.message });",
-  "    res.json({ products: rows });",
-  "  });",
-  "});",
-  "// Handle customer order checkout",
-  "app.post('/api/checkout', async (req, res) => {",
-  "  const { cart, email } = req.body;",
-  "  let total = 0;",
-  "  for (const item of cart) {",
-  "    const product = await getProductPrice(item.id);",
-  "    total += product.price * item.quantity;",
-  "  }",
-  "  const paymentIntent = await stripe.paymentIntents.create({",
-  "    amount: Math.round(total * 100),",
-  "    currency: 'usd',",
-  "    receipt_email: email",
-  "  });",
-  "  res.send({ clientSecret: paymentIntent.client_secret });",
-  "});"
-];
+    createLineGenerator = require('./linegen.js');
+    codeGrammar = require('./code.js');
+    testGrammar = require('./test.js');
+    bugfixGrammar = require('./bugfix.js');
+    refactorGrammar = require('./refactor.js');
+    autotestGrammar = require('./autotest.js');
+  } else {
+    DevGameEngine = window.DevGameEngine;
+    CONTRACTS = window.CONTRACTS;
+    TUTORIAL_PHASE = window.TUTORIAL_PHASE;
+    DEVELOPER_PHASE = window.DEVELOPER_PHASE;
+    BUSINESS_PHASE = window.BUSINESS_PHASE;
+    Formulas = window.Formulas;
 
-const TEST_LINES = [
-  "PASS  tests/bakery.test.js",
-  " ✓ should return inventory list (34ms)",
-  " ✓ should reject invalid checkout items (12ms)",
-  " ✓ should connect to stripe gateway (115ms)",
-  " Running path coverage analysis...",
-  " [WARN] Route '/api/checkout' has 85% branch coverage",
-  "   - Missing coverage for stripe API connection failure",
-  " Running Unit Tests: 18 tests passed, 0 failed.",
-  " PASS  tests/auth.test.js",
-  " ✓ should hash passwords on signup (48ms)",
-  " ✓ should block SQL injection on login (8ms)"
-];
+    createLineGenerator = window.createLineGenerator;
+    codeGrammar = window.codeGrammar;
+    testGrammar = window.testGrammar;
+    bugfixGrammar = window.bugfixGrammar;
+    refactorGrammar = window.refactorGrammar;
+    autotestGrammar = window.autotestGrammar;
+  }
 
-const BUGFIX_LINES = [
-  "TypeError: Cannot read property 'price' of undefined",
-  "    at calculateTotal (/src/cart.js:14:32)",
-  "    at processOrder (/src/routes/checkout.js:84:18)",
-  " [BUGFIXER] Attaching to process (port 9229)...",
-  " [BUGFIXER] Variable state at breakpoint L14:",
-  "    item = { id: 104, qty: 2 }",
-  "    product = undefined (Stripe query failed)",
-  " [FIXED] Added fallbacks for empty catalog queries.",
-  " ReferenceError: db is not defined",
-  "    at /src/routes/products.js:8:5",
-  " [FIXED] Imported database helper namespace."
-];
-
-const REFACTOR_LINES = [
-  " <<<<<<< /src/cart.js:L10",
-  " - function getCartTotal(items) {",
-  " -   let sum = 0;",
-  " -   for(let i=0; i<items.length; i++) {",
-  " -     sum += items[i].price * items[i].qty;",
-  " -   }",
-  " -   return sum;",
-  " - }",
-  " ======= /src/cart.js:L10",
-  " + const getCartTotal = items =>",
-  " +   items.reduce((sum, item) => sum + item.price * item.qty, 0);",
-  " >>>>>>>",
-  " [REFACTOR] Extracted checkout validation to middleware.",
-  " [REFACTOR] Replaced connection pool callbacks with promises."
-];
-
-const AUTOTEST_LINES = [
-  " [JEST] Initializing Jest Watch Mode...",
-  " [JEST] Found 4 test files matching regex patterns.",
-  " [CI/CD] Generating github actions deployment pipeline...",
-  " [CI/CD] Added lint checks and unit test step to pre-push hook.",
-  " [AUTO-TEST] Writing automated test mocks for Stripe webhook.",
-  " [AUTO-TEST] Locked minimum coverage constraint for /src/db.js"
-];
+  const codeLineGen = createLineGenerator(codeGrammar);
+  const testLineGen = createLineGenerator(testGrammar);
+  const bugfixLineGen = createLineGenerator(bugfixGrammar);
+  const refactorLineGen = createLineGenerator(refactorGrammar);
+  const autotestLineGen = createLineGenerator(autotestGrammar);
 
 // Browser Mounting & UI Interactivity Logic
 if (typeof window !== 'undefined') {
@@ -966,8 +903,7 @@ if (typeof window !== 'undefined') {
     const targetLocLines = Math.floor(engine.state.loc);
     const mainFile = FILES['main.js'];
     while (mainFile.content.length < targetLocLines && mainFile.content.length < 500) {
-      const nextLine = CODE_LINES[mainFile.content.length % CODE_LINES.length];
-      mainFile.content.push(nextLine);
+      mainFile.content.push(codeLineGen());
     }
     if (mainFile.content.length > maxEditorLines) {
       mainFile.content = mainFile.content.slice(-maxEditorLines);
@@ -976,8 +912,7 @@ if (typeof window !== 'undefined') {
     const targetTestLines = Math.floor(engine.state.testCoverage / 2);
     const testFile = FILES['test.js'];
     while (testFile.content.length < targetTestLines && testFile.content.length < 100) {
-      const nextLine = TEST_LINES[testFile.content.length % TEST_LINES.length];
-      testFile.content.push(nextLine);
+      testFile.content.push(testLineGen());
     }
     if (testFile.content.length > maxEditorLines) {
       testFile.content = testFile.content.slice(-maxEditorLines);
@@ -986,8 +921,7 @@ if (typeof window !== 'undefined') {
     const targetBugfixLines = Math.floor(engine.state.taskTimeSpent.bugfix * 2);
     const bugfixFile = FILES['bugfix.log'];
     while (bugfixFile.content.length < targetBugfixLines && bugfixFile.content.length < 100) {
-      const nextLine = BUGFIX_LINES[bugfixFile.content.length % BUGFIX_LINES.length];
-      bugfixFile.content.push(nextLine);
+      bugfixFile.content.push(bugfixLineGen());
     }
     if (bugfixFile.content.length > maxEditorLines) {
       bugfixFile.content = bugfixFile.content.slice(-maxEditorLines);
@@ -996,8 +930,7 @@ if (typeof window !== 'undefined') {
     const targetRefactorLines = Math.floor(engine.state.taskTimeSpent.refactor * 2);
     const refactorFile = FILES['refactor.diff'];
     while (refactorFile.content.length < targetRefactorLines && refactorFile.content.length < 100) {
-      const nextLine = REFACTOR_LINES[refactorFile.content.length % REFACTOR_LINES.length];
-      refactorFile.content.push(nextLine);
+      refactorFile.content.push(refactorLineGen());
     }
     if (refactorFile.content.length > maxEditorLines) {
       refactorFile.content = refactorFile.content.slice(-maxEditorLines);
@@ -1006,8 +939,7 @@ if (typeof window !== 'undefined') {
     const targetAutotestLines = Math.floor(engine.state.testCoverageFloor / 2);
     const autotestFile = FILES['jest.config.js'];
     while (autotestFile.content.length < targetAutotestLines && autotestFile.content.length < 100) {
-      const nextLine = AUTOTEST_LINES[autotestFile.content.length % AUTOTEST_LINES.length];
-      autotestFile.content.push(nextLine);
+      autotestFile.content.push(autotestLineGen());
     }
     if (autotestFile.content.length > maxEditorLines) {
       autotestFile.content = autotestFile.content.slice(-maxEditorLines);
@@ -1036,17 +968,18 @@ if (typeof window !== 'undefined') {
     terminalScrollTimer++;
     if (terminalScrollTimer >= 4) { // log every 0.2s
       terminalScrollTimer = 0;
-      let linesArray = [];
+      let lineGenFn = null;
       let className = 'system-msg';
       
-      if (task === 'code') { linesArray = CODE_LINES; className = 'code-line'; }
-      else if (task === 'test') { linesArray = TEST_LINES; className = 'success-msg'; }
-      else if (task === 'bugfix') { linesArray = BUGFIX_LINES; className = 'error-msg'; }
-      else if (task === 'refactor') { linesArray = REFACTOR_LINES; className = 'system-msg'; }
-      else if (task === 'autotest') { linesArray = AUTOTEST_LINES; className = 'system-msg'; }
+      if (task === 'code') { lineGenFn = codeLineGen; className = 'code-line'; }
+      else if (task === 'test') { lineGenFn = testLineGen; className = 'success-msg'; }
+      else if (task === 'bugfix') { lineGenFn = bugfixLineGen; className = 'error-msg'; }
+      else if (task === 'refactor') { lineGenFn = refactorLineGen; className = 'system-msg'; }
+      else if (task === 'autotest') { lineGenFn = autotestLineGen; className = 'system-msg'; }
 
-      let randomLine = linesArray[Math.floor(Math.random() * linesArray.length)];
-      logToConsole(randomLine, className);
+      if (lineGenFn) {
+        logToConsole(lineGenFn(), className);
+      }
     }
   }
 
