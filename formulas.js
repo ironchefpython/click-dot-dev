@@ -63,6 +63,19 @@
  */
 (function() {
   const Formulas = {
+    // Game constants and parameters
+    K_FOCUS: 0.06,      // Focus grows by 6% per second
+    K_FATIGUE: 0.008,   // Fatigue baseline coefficient
+    LAMBDA: 0.125,      // Exponential fatigue growth rate
+    FATIGUE_DECAY: 0.65, // Decay rate for inactive tasks
+
+    // Task base speeds
+    BASE_CODE_SPEED: 7.0,     // LOC written per second at 100% efficiency
+    BASE_TEST_SPEED: 0.8,    // Manual testing speed coefficient
+    BASE_BUGFIX_SPEED: 0.8,    // Bugs fixed per second
+    BASE_REFACTOR_SPEED: 11.0, // LOC removed per second
+    BASE_AUTOTEST_SPEED: 1.2, // Floor percentage added per second,
+
     /**
      * Minimum LOC required to implement N completed feature points.
      */
@@ -74,17 +87,16 @@
     /**
      * Probability of introducing a bug per integer LOC completed.
      */
-    calculateBugIntroProb(baseBugRate, complexity, linterReduction) {
-      return Math.min(1.0, baseBugRate * Math.pow(complexity, 1.2) * linterReduction);
+    calculateBugIntroProb(baseBugRate, complexity, loc, linterReduction) {
+      return baseBugRate * Math.pow(complexity, 1.2) * linterReduction;
     },
     
     /**
      * Increment applied to complexity per integer LOC completed.
      */
     getComplexityIncrement(contractComplexity, loc) {
-      const currentLoc = loc !== undefined ? loc : 0;
-      const k = 0.01;
-      return (k * contractComplexity) / Math.sqrt(currentLoc + 100);
+      const k = 0.1;
+      return (k * contractComplexity) / Math.sqrt((loc ?? 0) + 100);
     },
     
     /**
@@ -99,24 +111,27 @@
      * Probability of revealing a hidden bug in a single tick.
      */
     calculateRevealProb(efficiency, manualTestFactor, dt) {
-      return Math.min(1.0, (0.40 * efficiency * dt) / manualTestFactor);
+      return 0.25 * efficiency / manualTestFactor;
     },
     
     /**
      * Probability of debugging a revealed bug in a single tick.
      */
-    calculateDebugProb(efficiency, dt) {
-      return Math.min(1.0, 0.50 * efficiency * dt);
+    calculateBugfixProb(efficiency, bugfixClearProb) {
+      return bugfixClearProb * efficiency;
     },
 
     /**
      * Manual testing coverage growth speed per tick, proportional to LOC.
      */
-    calculateManualTestSpeed(baseSpeed, efficiency, manualTestFactor, coverage, loc) {
+    calculateManualTestSpeed(baseSpeed, efficiency, manualTestFactor, coverage, loc, hiddenBugs = 0) {
       const scaleLoc = Math.max(1.0, loc);
       const coverageRemainingRatio = 3 * (100 - coverage) / 100 + 1;
       const baselineLoc = 10.0;
-      return (baseSpeed * efficiency * coverageRemainingRatio * baselineLoc) / (scaleLoc * manualTestFactor);
+      
+      const bugMultiplier = hiddenBugs > 0 ? (1.0 / hiddenBugs) : 1.0;
+
+      return (baseSpeed * efficiency * coverageRemainingRatio * baselineLoc * bugMultiplier) / (scaleLoc * manualTestFactor);
     },
 
     /**
@@ -170,23 +185,36 @@
     /**
      * Calculates developer efficiency based on tutorial step status, focus, and fatigue.
      */
-    calculateEfficiency(tutorialStep, focusVal, fatigueVal) {
-      if (tutorialStep < 6) {
-        const projectNum = Math.min(5, Math.max(1, Math.floor(tutorialStep)));
-        const baseEff = 0.10 + (projectNum - 1) * (0.90 / 4);
+    calculateEfficiency(baseEfficiency, focusVal, fatigueVal) {
+      const baseEff = baseEfficiency !== undefined ? baseEfficiency : 1.0;
+      if (baseEff < 1.0) {
         const maxFocusBonus = baseEff; // cap so max = 2× base
         const cappedFocusVal = Math.min(focusVal, maxFocusBonus);
         return Math.max(0.01, baseEff + cappedFocusVal - fatigueVal);
       } else {
-        return Math.max(0.1, 1 + focusVal - fatigueVal);
+        return Math.max(0.1, 1.0 + focusVal - fatigueVal);
       }
     },
 
     /**
      * Calculates the new LOC written/completed in a single tick.
      */
-    calculateNewLoc(baseSpeed, efficiency, keyboardBoost, tutCodeBoost, speedMultiplier, dt) {
-      return baseSpeed * efficiency * keyboardBoost * tutCodeBoost * speedMultiplier * dt;
+    calculateNewLoc(baseSpeed, efficiency, keyboardBoost, difficulty, speedMultiplier, dt) {
+      return baseSpeed * efficiency * keyboardBoost * speedMultiplier * dt / difficulty;
+    },
+
+    /**
+     * Calculates the probability/progress increment for completing a feature point per integer LOC.
+     */
+    calculateFeatureCompleteProb(contract, difficulty, complexity) {
+      return 0.9 / (difficulty * (complexity ?? 1.0));
+    },
+
+    /**
+     * Checks if the LOC conditions allow a feature to be completed.
+     */
+    checkFeatureCompleteEligibility(currentIntLoc, minLocVal, loc, minLoc) {
+      return currentIntLoc >= minLocVal && loc >= minLoc;
     },
 
     /**

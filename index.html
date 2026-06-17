@@ -63,7 +63,7 @@
         <div class="sidebar-title">EXPLORER</div>
         <div class="file-tree">
           <div class="tree-item folder open">
-            <span class="chevron">▼</span> <span id="sidebar-folder-name">📁 online_course</span>
+            <span class="chevron">▼</span> <span id="sidebar-folder-name">📁&nbsp;online_course</span>
           </div>
           <div class="tree-items">
             <div id="file-main" class="tree-item file active">
@@ -72,8 +72,8 @@
             <div id="file-test" class="tree-item file locked">
               🔒 test.js
             </div>
-            <div id="file-debug" class="tree-item file locked">
-              🔒 debug.log
+            <div id="file-bugfix" class="tree-item file locked">
+              🔒 bugfix.log
             </div>
             <div id="file-refactor" class="tree-item file locked">
               🔒 refactor.diff
@@ -82,29 +82,51 @@
               🔒 jest.config.js
             </div>
           </div>
+          <!-- Game Folder -->
+          <div class="tree-item folder open">
+            <span class="chevron">▼</span> 🎮&nbsp;game
+          </div>
+          <div class="tree-items">
+            <div id="file-stats" class="tree-item file">
+              📄 stats.xls
+            </div>
+            <div id="file-upgrades" class="tree-item file">
+              🗄️ upgrades.db
+            </div>
+          </div>
         </div>
       </aside>
 
-      <!-- Center Code Editor Pane -->
-      <main class="ide-editor">
-        <!-- Editor Tabs -->
-        <div class="editor-tabs">
-          <div id="tab-active" class="tab active">
-            <span class="tab-icon" id="tab-icon">📄</span>
-            <span id="tab-title">main.js</span>
-            <span class="tab-close">×</span>
+      <!-- Center Pane Stack (Editor on top, Terminal below) -->
+      <div class="ide-center-container">
+        <!-- Center Code Editor Pane -->
+        <main class="ide-editor">
+          <!-- Editor Tabs -->
+          <div class="editor-tabs" id="editor-tabs-container">
+            <!-- Rendered dynamically -->
           </div>
-        </div>
 
-        <!-- Code Console Output -->
-        <div class="editor-content">
-          <div id="console-output" class="code-terminal">
-            <div class="terminal-line system-msg">Initializing workspace...</div>
-            <div class="terminal-line system-msg">Run "npm run start" to begin.</div>
+          <!-- Code Content -->
+          <div class="editor-content">
+            <div id="editor-code-view" class="code-editor-view">
+              <!-- Rendered dynamically -->
+            </div>
           </div>
-        </div>
+        </main>
 
-      </main>
+        <!-- Console Pane -->
+        <section class="ide-console">
+          <div class="console-header">
+            <span>TERMINAL</span>
+          </div>
+          <div class="console-content">
+            <div id="console-output" class="code-terminal">
+              <div class="terminal-line system-msg">Initializing workspace...</div>
+              <div class="terminal-line system-msg">Run "npm run start" to begin.</div>
+            </div>
+          </div>
+        </section>
+      </div>
 
       <!-- Right Dashboard Sidebar -->
       <aside class="ide-dashboard">
@@ -134,9 +156,9 @@
               <input type="radio" name="active-task" value="test" disabled>
               <span class="radio-label">🔬 Test</span>
             </label>
-            <label class="task-radio-btn locked task-debug" id="label-debug">
-              <input type="radio" name="active-task" value="debug" disabled>
-              <span class="radio-label">🐛 Debug</span>
+            <label class="task-radio-btn locked task-bugfix" id="label-bugfix">
+              <input type="radio" name="active-task" value="bugfix" disabled>
+              <span class="radio-label">🐛 Bugfix</span>
             </label>
             <label class="task-radio-btn locked task-refactor" id="label-refactor">
               <input type="radio" name="active-task" value="refactor" disabled>
@@ -156,9 +178,10 @@
             <div class="metric-card">
               <div class="metric-label">Code Size</div>
               <div id="stat-loc" class="metric-value">0 LOC</div>
+              <div id="stat-loc-sub" class="metric-sub">Hidden bugs: -</div>
             </div>
             <div class="metric-card">
-              <div class="metric-label">Backlog Story Points (incomplete / required)</div>
+              <div class="metric-label">Backlog</div>
               <div id="stat-backlog" class="metric-value">0 Points</div>
               <div id="stat-min-loc" class="metric-sub">Min LOC: -</div>
             </div>

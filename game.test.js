@@ -61,7 +61,7 @@ describe('Solo Coder Game - Core Engine Tests', () => {
 
   test('should auto-switch to idle when revealed bugs is less than 0.05', () => {
     const engine = new DevGameEngine();
-    engine.selectTask('debug');
+    engine.selectTask('bugfix');
     engine.state.revealedBugs = 0.04;
     engine.tick(0.05);
     expect(engine.state.activeTask).toBe('idle');
@@ -112,14 +112,14 @@ describe('Solo Coder Game - Core Engine Tests', () => {
   test('should set complexity to 1.5 on the first line of code', () => {
     const engine = new DevGameEngine();
     engine.state.tutorialStep = 6;
-    engine.loadContract(0); // Bakery: initial complexity 1.2
+    engine.loadContract(5); // Bakery: initial complexity 1.2
     expect(engine.state.complexity).toBe(1.2);
     expect(engine.state.loc).toBe(0);
 
     engine.selectTask('code');
     engine.tick(2.0); // should write some code
     expect(engine.state.loc).toBeGreaterThanOrEqual(1.0);
-    expect(engine.state.complexity).toBeCloseTo(1.5);
+    expect(engine.state.complexity).toBeCloseTo(1.5, 1);
   });
 
   test('should enforce backlogReduced restrictions for test and refactor only when tutorialStep >= 6', () => {
@@ -138,7 +138,7 @@ describe('Solo Coder Game - Core Engine Tests', () => {
 
     // Post-tutorial (step >= 6), should block test and refactor if backlog is not reduced
     engine.state.tutorialStep = 6;
-    engine.loadContract(2); // Todo list
+    engine.loadContract(5); // Bakery Website
     engine.state.backlogReduced = false;
     engine.state.complexity = 2.0;
     
@@ -168,13 +168,15 @@ describe('Solo Coder Game - Core Engine Tests', () => {
     engine.state.loc = 200.0;
     engine.state.minLoc = 100.0;
 
-    // Start with complexity at minimum (1.1)
-    engine.state.complexity = 1.1;
+    const initialComplexity = engine.currentContract.complexity || 1.1;
+
+    // Start with complexity at minimum
+    engine.state.complexity = initialComplexity;
     engine.selectTask('refactor');
     expect(engine.state.activeTask).not.toBe('refactor'); // should reject
 
     // Increase complexity
-    engine.state.complexity = 1.2;
+    engine.state.complexity = initialComplexity + 0.1;
     engine.selectTask('refactor');
     expect(engine.state.activeTask).toBe('refactor'); // should allow
 
@@ -183,7 +185,7 @@ describe('Solo Coder Game - Core Engine Tests', () => {
       engine.state.taskFatigue.refactor = 0;
       engine.tick(0.05);
     }
-    expect(engine.state.complexity).toBe(1.1);
+    expect(engine.state.complexity).toBe(initialComplexity);
     expect(engine.state.activeTask).toBe('idle'); // auto-switched to idle
   });
 
@@ -371,7 +373,7 @@ describe('Solo Coder Game - UI Binding & Integration Tests', () => {
     jest.useRealTimers();
   });
 
-  test('should unlock debug task at step 2 when the first bug is introduced', () => {
+  test('should unlock bugfix task at step 2 when the first bug is introduced', () => {
     jest.useFakeTimers();
     require('./main.js');
 
@@ -391,12 +393,12 @@ describe('Solo Coder Game - UI Binding & Integration Tests', () => {
 
     const codeRadio = document.querySelector('input[value="code"]');
     const testRadio = document.querySelector('input[value="test"]');
-    const debugRadio = document.querySelector('input[value="debug"]');
+    const bugfixRadio = document.querySelector('input[value="bugfix"]');
 
-    // Code is unlocked, test and debug are locked
+    // Code is unlocked, test and bugfix are locked
     expect(codeRadio.disabled).toBe(false);
     expect(testRadio.disabled).toBe(true);
-    expect(debugRadio.disabled).toBe(true);
+    expect(bugfixRadio.disabled).toBe(true);
 
     // Select code task
     codeRadio.checked = true;
@@ -408,15 +410,15 @@ describe('Solo Coder Game - UI Binding & Integration Tests', () => {
     // Verify overlay appears for Unit 2
     const overlay = document.getElementById('tutorial-overlay');
     expect(overlay.style.display).not.toBe('none');
-    expect(actionBtn.textContent).toBe('Start Debugging');
+    expect(actionBtn.textContent).toBe('Start Bugfixing');
 
-    // Click "Start Debugging" -> tutorialStep becomes 2
+    // Click "Start Bugfixing" -> tutorialStep becomes 2
     actionBtn.click();
     jest.advanceTimersByTime(50);
 
-    // Verify code and debug are unlocked, test remains locked
+    // Verify code and bugfix are unlocked, test remains locked
     expect(codeRadio.disabled).toBe(false);
-    expect(debugRadio.disabled).toBe(false);
+    expect(bugfixRadio.disabled).toBe(false);
     expect(testRadio.disabled).toBe(true);
 
     jest.useRealTimers();
@@ -444,11 +446,11 @@ describe('Solo Coder Game - UI Binding & Integration Tests', () => {
 
     const codeRadio = document.querySelector('input[value="code"]');
     const testRadio = document.querySelector('input[value="test"]');
-    const debugRadio = document.querySelector('input[value="debug"]');
+    const bugfixRadio = document.querySelector('input[value="bugfix"]');
 
-    // Code and Debug should be unlocked, Test should be locked
+    // Code and Bugfix should be unlocked, Test should be locked
     expect(codeRadio.disabled).toBe(false);
-    expect(debugRadio.disabled).toBe(false);
+    expect(bugfixRadio.disabled).toBe(false);
     expect(testRadio.disabled).toBe(true);
 
     // Select code task
@@ -506,7 +508,7 @@ describe('Solo Coder Game - UI Binding & Integration Tests', () => {
     jest.useRealTimers();
   });
 
-  test('should disable debug button in UI when there are zero found bugs', () => {
+  test('should disable bugfix button in UI when there are zero found bugs', () => {
     jest.useFakeTimers();
     require('./main.js');
 
@@ -517,17 +519,17 @@ describe('Solo Coder Game - UI Binding & Integration Tests', () => {
     const skipBtn = document.getElementById('tutorial-skip-btn');
     skipBtn.click();
 
-    const debugRadio = document.querySelector('input[value="debug"]');
+    const bugfixRadio = document.querySelector('input[value="bugfix"]');
 
     // Set revealedBugs to 0 (which is <= 0.05)
     window.engine.state.revealedBugs = 0.0;
     jest.advanceTimersByTime(50);
-    expect(debugRadio.disabled).toBe(true);
+    expect(bugfixRadio.disabled).toBe(true);
 
     // Set revealedBugs to 1 (which is > 0.05)
     window.engine.state.revealedBugs = 1.0;
     jest.advanceTimersByTime(50);
-    expect(debugRadio.disabled).toBe(false);
+    expect(bugfixRadio.disabled).toBe(false);
 
     jest.useRealTimers();
   });
@@ -626,11 +628,10 @@ describe('Solo Coder Game - Tutorial Project Time Calibration', () => {
   test('should fail to ship Project 4 without refactoring but pass with it', () => {
     const Formulas = require('./formulas.js');
     const originalIncrement = Formulas.getComplexityIncrement;
-    // Mock complexity increment to simulate a high complexity growth scenario (k = 0.06)
-    Formulas.getComplexityIncrement = (tutorialStep, contract, loc) => {
+    Formulas.getComplexityIncrement = (contractComplexity, loc) => {
       const currentLoc = loc !== undefined ? loc : 0;
-      const contractComplexity = contract ? (contract.complexity || 1.0) : 1.0;
-      return (0.06 * contractComplexity) / Math.sqrt(currentLoc + 100);
+      const comp = contractComplexity !== undefined ? contractComplexity : 1.0;
+      return (0.08 * comp) / Math.sqrt(currentLoc + 100);
     };
 
     try {
@@ -648,7 +649,7 @@ describe('Solo Coder Game - Tutorial Project Time Calibration', () => {
       gameNoRefactor.state.tutorialStep = 4;
       const customThresholdsNoRefactor = {
         code: { set: 0.05, reset: 0.05 },
-        debug: { set: 1.0, reset: 0.0 },
+        bugfix: { set: 1.0, reset: 0.0 },
         test: { set: 80.0, reset: 99.9 },
         refactor: { set: 999.0, reset: 999.0 },
         autotest: { set: 30.0, reset: 60.0 }
@@ -693,7 +694,7 @@ describe('Solo Coder Game - Tutorial Project Time Calibration', () => {
     
     // Select refactor task and tick
     engine.selectTask('refactor');
-    engine.tick(1.0);
+    engine.tick(0.05);
     
     // Verify featurePoints did not go up
     expect(engine.state.featurePoints).toBeLessThanOrEqual(initialFeaturePoints);

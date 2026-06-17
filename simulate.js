@@ -25,7 +25,7 @@ function checkTaskPossible(game, task) {
   } else if (task === 'test') {
     const needBacklogReduced = game.state.tutorialStep >= 6;
     isGamestatePossible = (!needBacklogReduced || game.state.backlogReduced) && game.state.testCoverage < 100.0;
-  } else if (task === 'debug') {
+  } else if (task === 'bugfix') {
     isGamestatePossible = game.state.revealedBugs > 0.05;
   } else if (task === 'refactor') {
     const needBacklogReduced = game.state.tutorialStep >= 6;
@@ -45,7 +45,7 @@ function checkTaskPossible(game, task) {
   if (step >= 6) return true;
 
   if (task === 'code')     return step >= 1;
-  if (task === 'debug')    return step >= 1.8;
+  if (task === 'bugfix')    return step >= 1.8;
   if (task === 'test')     return step >= 2.8;
   if (task === 'refactor') return step >= 3.8;
   if (task === 'autotest') return step >= 4.8;
@@ -61,7 +61,7 @@ function checkTaskPossible(game, task) {
  * @param {DevGameEngine} game
  * @param {number} seconds
  * @param {string} task
- * @param {object} taskTimes  Mutable accumulator: { idle, code, test, debug, refactor, autotest }
+ * @param {object} taskTimes  Mutable accumulator: { idle, code, test, bugfix, refactor, autotest }
  * @param {{ count: number }} tickCounter  Mutable tick counter shared across a simulation run
  */
 function runTick(game, seconds, task, taskTimes, tickCounter) {
@@ -98,7 +98,7 @@ function runTick(game, seconds, task, taskTimes, tickCounter) {
 
 const DEFAULT_THRESHOLDS = {
   code: { set: 0.05, reset: 0.05 },
-  debug: { set: 1.0, reset: 0.0 },
+  bugfix: { set: 1.0, reset: 0.0 },
   test: { set: 80.0, reset: 99.9 },
   refactor: { set: 1.4, reset: 0.05 }, // relative to contract's initial complexity
   autotest: { set: 30.0, reset: 60.0 }
@@ -109,7 +109,7 @@ const DEFAULT_THRESHOLDS = {
  * ready to ship, then ships it. Works for both tutorial and developer contracts.
  *
  * Uses hysteresis-based active task tracking:
- *   1. debug    - highest priority
+ *   1. bugfix    - highest priority
  *   2. refactor
  *   3. code
  *   4. autotest
@@ -118,7 +118,7 @@ const DEFAULT_THRESHOLDS = {
  * @returns {{ taskTimes, finalLoc, finalMinLoc }}
  */
 function simulateProject(game, contractIdx, tickCounter, thresholds = null, maxTicks = 15000) {
-  const taskTimes = { idle: 0, code: 0, test: 0, debug: 0, refactor: 0, autotest: 0 };
+  const taskTimes = { idle: 0, code: 0, test: 0, bugfix: 0, refactor: 0, autotest: 0 };
 
   game.loadContract(contractIdx);
 
@@ -129,7 +129,7 @@ function simulateProject(game, contractIdx, tickCounter, thresholds = null, maxT
 
   const activeTasks = {
     code: false,
-    debug: false,
+    bugfix: false,
     test: false,
     refactor: false,
     autotest: false
@@ -141,7 +141,7 @@ function simulateProject(game, contractIdx, tickCounter, thresholds = null, maxT
     if (isDevPhase) {
       activeThresholds = {
         code: { set: 0.05, reset: 0.05 },
-        debug: { set: 1.0, reset: 0.0 },
+        bugfix: { set: 1.0, reset: 0.0 },
         test: { set: 99.9, reset: 99.9 },
         refactor: { set: 0.50, reset: 0.05 },
         autotest: { set: 80.0, reset: 95.0 }
@@ -152,8 +152,8 @@ function simulateProject(game, contractIdx, tickCounter, thresholds = null, maxT
   }
 
   const taskPriority = isDevPhase
-    ? ['debug', 'refactor', 'autotest', 'code', 'test']
-    : ['debug', 'refactor', 'code', 'autotest', 'test'];
+    ? ['bugfix', 'refactor', 'autotest', 'code', 'test']
+    : ['bugfix', 'refactor', 'code', 'autotest', 'test'];
 
   const startTicks = tickCounter.count;
   while (!game.isShipReady() && (tickCounter.count - startTicks) < MAX_TICKS) {
@@ -166,12 +166,12 @@ function simulateProject(game, contractIdx, tickCounter, thresholds = null, maxT
       activeTasks.code = false;
     }
 
-    // Debug
-    if (game.state.revealedBugs >= activeThresholds.debug.set) {
-      activeTasks.debug = true;
+    // Bugfix
+    if (game.state.revealedBugs >= activeThresholds.bugfix.set) {
+      activeTasks.bugfix = true;
     }
-    if (game.state.revealedBugs <= activeThresholds.debug.reset) {
-      activeTasks.debug = false;
+    if (game.state.revealedBugs <= activeThresholds.bugfix.reset) {
+      activeTasks.bugfix = false;
     }
 
     // Test
@@ -199,12 +199,25 @@ function simulateProject(game, contractIdx, tickCounter, thresholds = null, maxT
       activeTasks.autotest = false;
     }
 
-    // 2. Choose highest priority task that is active AND possible
-    let task = 'idle';
-    for (const t of taskPriority) {
-      if (activeTasks[t] && checkTaskPossible(game, t)) {
-        task = t;
-        break;
+    // 2. Choose active task: continue with current task if not idle;
+    // otherwise, select the highest priority active and possible task.
+    let task = game.state.activeTask || 'idle';
+    if (task === 'idle') {
+      for (const t of taskPriority) {
+        if (activeTasks[t] && checkTaskPossible(game, t)) {
+          task = t;
+          break;
+        }
+      }
+      // Fallback: if we selected idle but the project is not ready to ship,
+      // force selection of the highest priority possible task to break deadlocks.
+      if (task === 'idle' && !game.isShipReady()) {
+        for (const t of taskPriority) {
+          if (checkTaskPossible(game, t)) {
+            task = t;
+            break;
+          }
+        }
       }
     }
 
@@ -265,7 +278,7 @@ function simulateCareer() {
   // task introduced during that project is available from the first tick.
   const tutorialSteps = [
     1,  // P1: code only
-    2,  // P2: + debug (>= 1.8)
+    2,  // P2: + bugfix (>= 1.8)
     3,  // P3: + test  (>= 2.8)
     4,  // P4: + refactor (>= 3.8)
     5,  // P5: + autotest (>= 4.8)
@@ -293,7 +306,7 @@ function simulateCareer() {
   // ── Developer phase contracts ───────────────────────────────────────────────
   for (let i = 0; i < DEVELOPER_PHASE.contracts.length; i++) {
     buyAffordableUpgrades(game);
-    const { taskTimes, finalLoc, finalMinLoc, shipped } = simulateProject(game, i, tickCounter);
+    const { taskTimes, finalLoc, finalMinLoc, shipped } = simulateProject(game, i + 5, tickCounter);
 
     results.push({
       label:    `D${i + 1}: ${DEVELOPER_PHASE.contracts[i].title}`,
@@ -314,46 +327,71 @@ function simulateCareer() {
 if (require.main === module) {
   const results = simulateCareer();
 
-  const tableData = results.map(r => {
-    const row = {
-      'Project':    r.label,
-      'LOC':        r.loc.toFixed(1),
-      'Min LOC':    r.minLoc.toFixed(1),
-      'Code':       r.code.toFixed(2),
-      'Test':       r.test.toFixed(2),
-      'Debug':      r.debug.toFixed(2),
-      'Refactor':   r.refactor.toFixed(2),
-      'Unit Tests': r.autotest.toFixed(2),
-      'Idle':       r.idle.toFixed(2),
-      'Total':      r.shipped ? r.total.toFixed(2) : 'TIMEOUT',
-    };
-    if (r.target !== null) row['Target'] = r.target.toFixed(2);
-    return row;
-  });
-
   if (process.stdout.isTTY) {
-    console.log('\n=========================================================================================');
-    console.log('                        DevLoop Career Playtime Simulation');
-    console.log('=========================================================================================');
-    console.table(tableData);
-    console.log('=========================================================================================\n');
+    const cols = [
+      { name: 'Project', width: 28, align: 'left', key: 'label' },
+      { name: 'LOC', width: 6, align: 'right', format: v => v.loc.toFixed(1) },
+      { name: 'Min LOC', width: 8, align: 'right', format: v => v.minLoc.toFixed(1) },
+      { name: 'Code', width: 6, align: 'right', format: v => v.code.toFixed(1) },
+      { name: 'Test', width: 6, align: 'right', format: v => v.test.toFixed(1) },
+      { name: 'Bugfix', width: 6, align: 'right', format: v => v.bugfix.toFixed(1) },
+      { name: 'Refactor', width: 8, align: 'right', format: v => v.refactor.toFixed(1) },
+      { name: 'Coverage', width: 8, align: 'right', format: v => v.autotest.toFixed(1) },
+      { name: 'Idle', width: 6, align: 'right', format: v => v.idle.toFixed(1) },
+      { name: 'Total', width: 8, align: 'right', format: v => v.shipped ? v.total.toFixed(1) : 'TIMEOUT' },
+      { name: 'Target', width: 6, align: 'right', format: v => v.target !== null ? v.target.toFixed(1) : '-' }
+    ];
+
+    const topBorder = '┌' + cols.map(c => '─'.repeat(c.width + 2)).join('┬') + '┐';
+    const midBorder = '├' + cols.map(c => '─'.repeat(c.width + 2)).join('┼') + '┤';
+    const botBorder = '└' + cols.map(c => '─'.repeat(c.width + 2)).join('┴') + '┘';
+
+    function formatRow(rowValues) {
+      return '│ ' + cols.map((c, i) => {
+        const val = rowValues[i];
+        if (c.align === 'left') {
+          return val.padEnd(c.width);
+        } else {
+          return val.padStart(c.width);
+        }
+      }).join(' │ ') + ' │';
+    }
+
+    const bannerWidth = topBorder.length;
+    const bannerLine = '='.repeat(bannerWidth);
+
+    console.log('\n' + bannerLine);
+    console.log(' '.repeat(Math.max(0, Math.floor((bannerWidth - 34) / 2))) + 'DevLoop Career Playtime Simulation');
+    console.log(bannerLine);
+    console.log(topBorder);
+    console.log(formatRow(cols.map(c => c.name)));
+    console.log(midBorder);
+    results.forEach(r => {
+      const rowValues = cols.map(c => {
+        if (c.key) return r[c.key];
+        return c.format(r);
+      });
+      console.log(formatRow(rowValues));
+    });
+    console.log(botBorder);
+    console.log(bannerLine + '\n');
   } else {
-    const headers = ['Project', 'LOC', 'Min LOC', 'Code', 'Test', 'Debug', 'Refactor', 'Unit Tests', 'Idle', 'Total', 'Target'];
+    const headers = ['Project', 'LOC', 'Min LOC', 'Code', 'Test', 'Bugfix', 'Refactor', 'Coverage', 'Idle', 'Total', 'Target'];
     console.log('| ' + headers.join(' | ') + ' |');
-    console.log('| ' + headers.map(h => (h === 'Project' ? ':---' : ':---:')).join(' | ') + ' |');
+    console.log('| ' + headers.map(h => (h === 'Project' ? ':---' : '---:')).join(' | ') + ' |');
     results.forEach(r => {
       const row = [
         r.label,
         r.loc.toFixed(1),
         r.minLoc.toFixed(1),
-        r.code.toFixed(2),
-        r.test.toFixed(2),
-        r.debug.toFixed(2),
-        r.refactor.toFixed(2),
-        r.autotest.toFixed(2),
-        r.idle.toFixed(2),
-        r.shipped ? r.total.toFixed(2) : 'TIMEOUT',
-        r.target !== null ? r.target.toFixed(2) : '-',
+        r.code.toFixed(1),
+        r.test.toFixed(1),
+        r.bugfix.toFixed(1),
+        r.refactor.toFixed(1),
+        r.autotest.toFixed(1),
+        r.idle.toFixed(1),
+        r.shipped ? r.total.toFixed(1) : 'TIMEOUT',
+        r.target !== null ? r.target.toFixed(1) : '-',
       ];
       console.log('| ' + row.join(' | ') + ' |');
     });

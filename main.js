@@ -63,12 +63,12 @@ const TEST_LINES = [
   " ✓ should block SQL injection on login (8ms)"
 ];
 
-const DEBUG_LINES = [
+const BUGFIX_LINES = [
   "TypeError: Cannot read property 'price' of undefined",
   "    at calculateTotal (/src/cart.js:14:32)",
   "    at processOrder (/src/routes/checkout.js:84:18)",
-  " [DEBUGGER] Attaching to process (port 9229)...",
-  " [DEBUGGER] Variable state at breakpoint L14:",
+  " [BUGFIXER] Attaching to process (port 9229)...",
+  " [BUGFIXER] Variable state at breakpoint L14:",
   "    item = { id: 104, qty: 2 }",
   "    product = undefined (Stripe query failed)",
   " [FIXED] Added fallbacks for empty catalog queries.",
@@ -107,6 +107,70 @@ const AUTOTEST_LINES = [
 if (typeof window !== 'undefined') {
   window.createSimulator = (initState) => new DevGameEngine(initState);
 
+  const FILES = {
+    'main.js': {
+      id: 'file-main',
+      task: 'code',
+      icon: '📄',
+      path: '/src/main.js',
+      content: [],
+      placeholder: '// Writing code... Select Code task to begin.'
+    },
+    'test.js': {
+      id: 'file-test',
+      task: 'test',
+      icon: '🔬',
+      path: '/tests/test.js',
+      content: [],
+      placeholder: '// Running tests... Select Test task to begin.'
+    },
+    'bugfix.log': {
+      id: 'file-bugfix',
+      task: 'bugfix',
+      icon: '🐛',
+      path: '/logs/bugfix.log',
+      content: [],
+      placeholder: '# Bugfix log. Select Bugfix task to begin.'
+    },
+    'refactor.diff': {
+      id: 'file-refactor',
+      task: 'refactor',
+      icon: '🔧',
+      path: '/diffs/refactor.diff',
+      content: [],
+      placeholder: '# Refactor diff. Select Refactor task to begin.'
+    },
+    'jest.config.js': {
+      id: 'file-autotest',
+      task: 'autotest',
+      icon: '🤖',
+      path: '/config/jest.config.js',
+      content: [],
+      placeholder: '// Unit tests configuration. Select Unit Tests task to begin.'
+    },
+    'stats.xls': {
+      id: 'file-stats',
+      task: 'stats',
+      icon: '📄',
+      path: '/game/stats.xls',
+      content: [],
+      placeholder: ''
+    },
+    'upgrades.db': {
+      id: 'file-upgrades',
+      task: 'upgrades',
+      icon: '🗄️',
+      path: '/game/upgrades.db',
+      content: [],
+      placeholder: ''
+    }
+  };
+
+  let openTabs = ['main.js'];
+  let activeTab = 'main.js';
+  let maxEditorLines = 15;
+  let maxConsoleLines = 8;
+
   const startingConditions = {
     ...(typeof TUTORIAL_PHASE !== 'undefined' ? TUTORIAL_PHASE.startingConditions : {}),
     ...(typeof DEVELOPER_PHASE !== 'undefined' ? DEVELOPER_PHASE.startingConditions : {})
@@ -132,7 +196,10 @@ if (typeof window !== 'undefined') {
       manualTestFactor: cond.manualTestFactor || 1.0,
       activeTask: cond.activeTask || 'idle',
       taskFatigue: {
-        idle: 0, code: 0, test: 0, debug: 0, refactor: 0, autotest: 0
+        idle: 0, code: 0, test: 0, bugfix: 0, refactor: 0, autotest: 0
+      },
+      taskTimeSpent: cond.taskTimeSpent ? { ...cond.taskTimeSpent } : {
+        idle: 0, code: 0, test: 0, bugfix: 0, refactor: 0, autotest: 0
       },
       purchasedUpgrades: cond.purchasedUpgrades ? [...cond.purchasedUpgrades] : [],
       tutorialStep: cond.tutorialStep !== undefined ? cond.tutorialStep : 0,
@@ -143,7 +210,7 @@ if (typeof window !== 'undefined') {
       bugfixClearProgress: 0.0,
       featureCompleteProgress: 0.0,
       revealProgress: 0.0,
-      debugProgress: 0.0,
+      bugfixProgress: 0.0,
       bugfixBacklogProgress: 0.0
     };
   }
@@ -172,6 +239,7 @@ if (typeof window !== 'undefined') {
       unlockAllTaskButtons();
       clearHighlights();
       updateProjectUIHeader();
+      initializeProjectFiles();
       logToConsole("[SYSTEM] Tutorial skipped. Starting with $10 cash & Bakery Contract.", "success-msg");
     });
 
@@ -224,6 +292,48 @@ if (typeof window !== 'undefined') {
     // Start UI updates
     updateProjectUIHeader();
     syncTutorialButtonsUI();
+
+    // File tree selection listeners
+    document.querySelectorAll(".tree-item.file").forEach(fileEl => {
+      fileEl.addEventListener("click", () => {
+        if (fileEl.classList.contains("locked")) return;
+        
+        const id = fileEl.id;
+        const fileName = Object.keys(FILES).find(name => FILES[name].id === id);
+        if (fileName) {
+          openFile(fileName);
+        }
+      });
+    });
+
+    // Folder expand/collapse chevron toggle
+    document.querySelectorAll(".tree-item.folder").forEach(folderEl => {
+      folderEl.addEventListener("click", () => {
+        folderEl.classList.toggle("open");
+        const chevron = folderEl.querySelector(".chevron");
+        if (chevron) {
+          chevron.textContent = folderEl.classList.contains("open") ? "▼" : "▶";
+        }
+      });
+    });
+
+    // Calculate line limits from dynamic layout dimensions
+    updateDynamicLineLimits();
+
+    // Initialize files
+    initializeProjectFiles();
+
+    // Recalculate limits and trim terminal/editor on browser resize
+    window.addEventListener("resize", () => {
+      updateDynamicLineLimits();
+      renderEditorContent();
+      const terminal = document.getElementById("console-output");
+      if (terminal) {
+        while (terminal.childNodes.length > maxConsoleLines) {
+          terminal.removeChild(terminal.firstChild);
+        }
+      }
+    });
 
     // If starting condition has UI implications, configure overlay popup
     if (hashKey && startingConditions[hashKey]) {
@@ -307,9 +417,9 @@ if (typeof window !== 'undefined') {
         title.textContent = "Unit 2: Bug Squashing";
         text.innerHTML = `
           <p>A compilation bug has appeared in your code!</p>
-          <p style="margin-top: 10px;">Bugs decrease the code value and block deployment. Select Debugging to resolve these known issues.</p>
+          <p style="margin-top: 10px;">Bugs decrease the code value and block deployment. Select Bugfixing to resolve these known issues.</p>
         `;
-        btn.textContent = "Start Debugging";
+        btn.textContent = "Start Bugfixing";
         clearHighlights();
       }
     });
@@ -391,6 +501,23 @@ if (typeof window !== 'undefined') {
     engine.addEventListener('shippable', checkGraduate);
     engine.addEventListener('testCoverageFloorIncreased', checkGraduate);
 
+    engine.addEventListener('shippable', () => {
+      const times = engine.state.taskTimeSpent || { idle: 0, code: 0, test: 0, bugfix: 0, refactor: 0, autotest: 0 };
+      const messageLines = [
+        `[DEBUG] Time spent on each task for ${engine.currentContract ? engine.currentContract.title : 'project'}:`,
+        `  - Idle: ${times.idle.toFixed(2)}s`,
+        `  - Code: ${times.code.toFixed(2)}s`,
+        `  - Test: ${times.test.toFixed(2)}s`,
+        `  - Bugfix: ${times.bugfix.toFixed(2)}s`,
+        `  - Refactor: ${times.refactor.toFixed(2)}s`,
+        `  - Unit Tests: ${times.autotest.toFixed(2)}s`
+      ];
+      console.log(messageLines.join('\n'));
+      messageLines.forEach(line => {
+        logToConsole(line, 'system-msg');
+      });
+    });
+
     engine.addEventListener('complexityThresholdReached', (data) => {
       const words = {
         3.0: "complicated",
@@ -443,53 +570,465 @@ if (typeof window !== 'undefined') {
 
       // Render all stats to DOM
       renderUI(tickReport.focusVal, tickReport.fatigueVal, tickReport.efficiency);
+      updateFileContents();
+      renderEditorContent();
     }, 50);
   });
 
   function updateProjectUIHeader() {
     document.getElementById("header-project-name").textContent = engine.currentContract.title;
-    document.getElementById("sidebar-folder-name").textContent = engine.currentContract.folderName;
+    const folderName = engine.currentContract.folderName;
+    document.getElementById("sidebar-folder-name").textContent = folderName ? folderName.replace('📁 ', '📁\u00A0') : '';
+  }
+
+  function resetFileContents() {
+    Object.keys(FILES).forEach(fileName => {
+      if (fileName !== 'coffee_break.txt') {
+        FILES[fileName].content = [];
+      }
+    });
+  }
+
+  function measureLineHeight(container, className) {
+    const dummy = document.createElement("div");
+    dummy.className = className;
+    dummy.style.visibility = "hidden";
+    dummy.style.position = "absolute";
+    dummy.innerHTML = "<span>1</span><span>Test</span>";
+    container.appendChild(dummy);
+    const height = dummy.offsetHeight || 20;
+    container.removeChild(dummy);
+    return height;
+  }
+
+  function updateDynamicLineLimits() {
+    const editorView = document.getElementById("editor-code-view");
+    const terminal = document.getElementById("console-output");
+
+    if (editorView) {
+      const h = editorView.clientHeight;
+      if (h > 0) {
+        const lineHeight = measureLineHeight(editorView, "editor-line");
+        const padding = 32;
+        const availableHeight = Math.max(0, h - padding);
+        maxEditorLines = Math.max(1, Math.floor(availableHeight / lineHeight));
+      } else {
+        maxEditorLines = 15;
+      }
+    }
+
+    if (terminal) {
+      const h = terminal.clientHeight;
+      if (h > 0) {
+        const lineHeight = measureLineHeight(terminal, "terminal-line");
+        const padding = 32;
+        const availableHeight = Math.max(0, h - padding);
+        maxConsoleLines = Math.max(1, Math.floor(availableHeight / lineHeight));
+      } else {
+        maxConsoleLines = 8;
+      }
+    }
+  }
+
+  function initializeProjectFiles() {
+    resetFileContents();
+    openTabs = ['main.js'];
+    openFile('main.js');
+  }
+
+  function openFile(fileName) {
+    const file = FILES[fileName];
+    if (!file) return;
+
+    if (!openTabs.includes(fileName)) {
+      openTabs.push(fileName);
+    }
+    activeTab = fileName;
+
+    renderTabs();
+    renderEditorContent();
+
+    const filePath = document.getElementById("header-file-path");
+    if (filePath) {
+      filePath.textContent = file.path;
+    }
+
+    document.querySelectorAll(".tree-item.file").forEach(f => f.classList.remove("active"));
+    if (file.id) {
+      const sidebarEl = document.getElementById(file.id);
+      if (sidebarEl) {
+        sidebarEl.classList.add("active");
+      }
+    }
+  }
+
+  function closeFileTab(fileName) {
+    const index = openTabs.indexOf(fileName);
+    if (index === -1) return;
+
+    openTabs.splice(index, 1);
+
+    if (activeTab === fileName) {
+      if (openTabs.length > 0) {
+        const nextActiveIndex = Math.min(index, openTabs.length - 1);
+        const nextActiveTab = openTabs[nextActiveIndex];
+        openFile(nextActiveTab);
+      } else {
+        activeTab = null;
+        renderTabs();
+        renderEditorContent();
+
+        const filePath = document.getElementById("header-file-path");
+        if (filePath) {
+          filePath.textContent = "";
+        }
+        document.querySelectorAll(".tree-item.file").forEach(f => f.classList.remove("active"));
+      }
+    } else {
+      renderTabs();
+    }
+  }
+
+  function renderTabs() {
+    const container = document.getElementById("editor-tabs-container");
+    if (!container) return;
+
+    container.innerHTML = "";
+    openTabs.forEach(fileName => {
+      const file = FILES[fileName];
+      if (!file) return;
+
+      const tabEl = document.createElement("div");
+      tabEl.className = `tab ${activeTab === fileName ? 'active' : ''}`;
+      tabEl.dataset.file = fileName;
+
+      const iconSpan = document.createElement("span");
+      iconSpan.className = "tab-icon";
+      iconSpan.textContent = file.icon;
+
+      const titleSpan = document.createElement("span");
+      titleSpan.textContent = fileName;
+
+      tabEl.appendChild(iconSpan);
+      tabEl.appendChild(titleSpan);
+
+      const closeSpan = document.createElement("span");
+      closeSpan.className = "tab-close";
+      closeSpan.textContent = "×";
+      closeSpan.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeFileTab(fileName);
+      });
+
+      tabEl.appendChild(closeSpan);
+
+      tabEl.addEventListener("click", () => {
+        openFile(fileName);
+      });
+
+      container.appendChild(tabEl);
+    });
+  }
+
+  function highlightSyntax(text, task) {
+    let escaped = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+
+    if (task === 'code' || task === 'autotest') {
+      if (escaped.trim().startsWith("//")) {
+        return `<span class="code-comment">${escaped}</span>`;
+      }
+      escaped = escaped.replace(/(['"])(.*?)\1/g, '<span class="code-string">$1$2$1</span>');
+      const keywords = [
+        'const', 'let', 'var', 'function', 'return', 'require', 'class', 'new', 
+        'await', 'async', 'import', 'from', 'if', 'else', 'for', 'while', 'try', 'catch', 'finally'
+      ];
+      keywords.forEach(kw => {
+        const regex = new RegExp(`\\b(${kw})\\b`, 'g');
+        escaped = escaped.replace(regex, '<span class="code-keyword">$1</span>');
+      });
+      return escaped;
+    }
+
+    if (task === 'test') {
+      if (escaped.includes("PASS")) {
+        escaped = escaped.replace("PASS", '<span class="test-pass">PASS</span>');
+      }
+      if (escaped.includes("✓")) {
+        escaped = escaped.replace("✓", '<span class="test-check">✓</span>');
+      }
+      if (escaped.includes("[WARN]")) {
+        escaped = escaped.replace("[WARN]", '<span class="test-warn">[WARN]</span>');
+      }
+      return escaped;
+    }
+
+    if (task === 'bugfix') {
+      if (escaped.includes("TypeError") || escaped.includes("ReferenceError")) {
+        escaped = `<span class="bug-error">${escaped}</span>`;
+      } else if (escaped.includes("[FIXED]")) {
+        escaped = escaped.replace("[FIXED]", '<span class="bug-fixed">[FIXED]</span>');
+      } else if (escaped.includes("[BUGFIXER]")) {
+        escaped = escaped.replace("[BUGFIXER]", '<span class="bug-tool">[BUGFIXER]</span>');
+      }
+      return escaped;
+    }
+
+    if (task === 'refactor') {
+      if (escaped.startsWith("+")) {
+        return `<span class="diff-add">${escaped}</span>`;
+      }
+      if (escaped.startsWith("-")) {
+        return `<span class="diff-del">${escaped}</span>`;
+      }
+      return escaped;
+    }
+
+    return escaped;
+  }
+
+  function renderEditorContent() {
+    const editorView = document.getElementById("editor-code-view");
+    if (!editorView) return;
+
+    const file = FILES[activeTab];
+    if (!file) {
+      editorView.innerHTML = '<div class="editor-placeholder">// No file open.</div>';
+      return;
+    }
+
+    if (file.content.length === 0 && file.placeholder) {
+      editorView.innerHTML = `<div class="editor-placeholder">${file.placeholder}</div>`;
+      return;
+    }
+
+    let totalLines = 0;
+    if (activeTab === 'main.js') {
+      totalLines = Math.floor(engine.state.loc);
+    } else if (activeTab === 'test.js') {
+      totalLines = Math.floor(engine.state.testCoverage / 2);
+    } else if (activeTab === 'bugfix.log') {
+      totalLines = Math.floor(engine.state.taskTimeSpent.bugfix * 2);
+    } else if (activeTab === 'refactor.diff') {
+      totalLines = Math.floor(engine.state.taskTimeSpent.refactor * 2);
+    } else if (activeTab === 'jest.config.js') {
+      totalLines = Math.floor(engine.state.testCoverageFloor / 2);
+    } else if (activeTab === 'stats.xls' || activeTab === 'upgrades.db') {
+      totalLines = file.content.length;
+    }
+
+    const startLineNum = Math.max(1, totalLines - file.content.length + 1);
+
+    editorView.innerHTML = "";
+    file.content.forEach((lineText, idx) => {
+      const lineEl = document.createElement("div");
+      lineEl.className = "editor-line";
+
+      const numSpan = document.createElement("span");
+      numSpan.className = "line-number";
+      numSpan.textContent = startLineNum + idx;
+
+      const textSpan = document.createElement("span");
+      textSpan.className = "line-text";
+      textSpan.innerHTML = highlightSyntax(lineText, file.task);
+
+      lineEl.appendChild(numSpan);
+      lineEl.appendChild(textSpan);
+      editorView.appendChild(lineEl);
+    });
+  }
+
+  function generateStatsContent() {
+    const lines = [];
+    lines.push("========================================================================");
+    lines.push("|                   SOLO CODER - CAREER RANK SHEET                     |");
+    lines.push("========================================================================");
+    lines.push("| STATUS | RANK NAME            | XP RANGE   | CODING SPEED MULTIPLIER |");
+    lines.push("------------------------------------------------------------------------");
+
+    const currentRank = engine.getRank();
+    const isTutorial = (engine.state.tutorialStep < 6);
+
+    const tutorialRanks = [
+      { name: "Coding Novice", minXP: 0, maxXP: 4, speed: 0.25 },
+      { name: "Syntax Scholar", minXP: 5, maxXP: 11, speed: 0.50 },
+      { name: "Logic Student", minXP: 12, maxXP: 24, speed: 0.75 },
+      { name: "Graduate Candidate", minXP: 25, maxXP: Infinity, speed: 1.00 }
+    ];
+
+    tutorialRanks.forEach(r => {
+      const activeMarker = (isTutorial && currentRank === r.name) ? "*" : " ";
+      const xpRangeStr = r.maxXP === Infinity ? "25+" : `${r.minXP} - ${r.maxXP}`;
+      const speedStr = `${r.speed.toFixed(2)}x`;
+      
+      const statusCol = `|   ${activeMarker}    `;
+      const nameCol = `| ${r.name.padEnd(20)} `;
+      const rangeCol = `| ${xpRangeStr.padEnd(10)} `;
+      const multCol = `| ${speedStr.padEnd(23)} |`;
+      lines.push(statusCol + nameCol + rangeCol + multCol);
+    });
+
+    lines.push("------------------------------------------------------------------------");
+    
+    const developerRanks = [
+      { name: "Junior Developer", minXP: 0, maxXP: 99, speed: 1.00 },
+      { name: "Software Engineer", minXP: 100, maxXP: 299, speed: 1.00 },
+      { name: "Senior Developer", minXP: 300, maxXP: 599, speed: 1.00 },
+      { name: "Lead Architect", minXP: 600, maxXP: 1199, speed: 1.00 },
+      { name: "Principal Engineer", minXP: 1200, maxXP: Infinity, speed: 1.00 }
+    ];
+
+    developerRanks.forEach(r => {
+      const activeMarker = (!isTutorial && currentRank === r.name) ? "*" : " ";
+      const xpRangeStr = r.maxXP === Infinity ? "1200+" : `${r.minXP} - ${r.maxXP}`;
+      const speedStr = `${r.speed.toFixed(2)}x`;
+      
+      const statusCol = `|   ${activeMarker}    `;
+      const nameCol = `| ${r.name.padEnd(20)} `;
+      const rangeCol = `| ${xpRangeStr.padEnd(10)} `;
+      const multCol = `| ${speedStr.padEnd(23)} |`;
+      lines.push(statusCol + nameCol + rangeCol + multCol);
+    });
+
+    lines.push("========================================================================");
+    lines.push(`CURRENT KNOWLEDGE: ${engine.state.xp.toFixed(1)} XP`);
+    lines.push(`CURRENT RANK: ${currentRank}`);
+    
+    const baseMult = engine.getCodingSpeedMultiplier();
+    lines.push(`CURRENT SPEED MULTIPLIER: ${baseMult.toFixed(2)}x`);
+    lines.push("========================================================================");
+
+    return lines;
+  }
+
+  function generateUpgradesContent() {
+    const lines = [];
+    lines.push("========================================================================");
+    lines.push("|                     SOLO CODER - UPGRADE DATABASE                    |");
+    lines.push("========================================================================");
+
+    const purchased = engine.state.purchasedUpgrades || [];
+
+    lines.push("[TUTORIAL PHASE UPGRADES]");
+    let tutCount = 0;
+    TUTORIAL_PHASE.upgrades.forEach(u => {
+      if (purchased.includes(u.id)) {
+        lines.push(`* ${u.name} (${u.id})`);
+        u.desc.split('\n').forEach(descLine => {
+          lines.push(`  ${descLine}`);
+        });
+        tutCount++;
+      }
+    });
+    if (tutCount === 0) {
+      lines.push("  - None purchased yet.");
+    }
+    lines.push("");
+
+    lines.push("[DEVELOPER PHASE UPGRADES]");
+    let devCount = 0;
+    DEVELOPER_PHASE.upgrades.forEach(u => {
+      if (purchased.includes(u.id)) {
+        lines.push(`* ${u.name} (${u.id})`);
+        u.desc.split('\n').forEach(descLine => {
+          lines.push(`  ${descLine}`);
+        });
+        devCount++;
+      }
+    });
+    if (devCount === 0) {
+      lines.push("  - None purchased yet.");
+    }
+    lines.push("");
+
+    lines.push("[BUSINESS PHASE UPGRADES]");
+    let busCount = 0;
+    BUSINESS_PHASE.upgrades.forEach(u => {
+      if (purchased.includes(u.id)) {
+        lines.push(`* ${u.name} (${u.id})`);
+        u.desc.split('\n').forEach(descLine => {
+          lines.push(`  ${descLine}`);
+        });
+        busCount++;
+      }
+    });
+    if (busCount === 0) {
+      lines.push("  - None purchased yet.");
+    }
+    lines.push("========================================================================");
+
+    return lines;
+  }
+
+  function updateFileContents() {
+    const targetLocLines = Math.floor(engine.state.loc);
+    const mainFile = FILES['main.js'];
+    while (mainFile.content.length < targetLocLines && mainFile.content.length < 500) {
+      const nextLine = CODE_LINES[mainFile.content.length % CODE_LINES.length];
+      mainFile.content.push(nextLine);
+    }
+    if (mainFile.content.length > maxEditorLines) {
+      mainFile.content = mainFile.content.slice(-maxEditorLines);
+    }
+
+    const targetTestLines = Math.floor(engine.state.testCoverage / 2);
+    const testFile = FILES['test.js'];
+    while (testFile.content.length < targetTestLines && testFile.content.length < 100) {
+      const nextLine = TEST_LINES[testFile.content.length % TEST_LINES.length];
+      testFile.content.push(nextLine);
+    }
+    if (testFile.content.length > maxEditorLines) {
+      testFile.content = testFile.content.slice(-maxEditorLines);
+    }
+
+    const targetBugfixLines = Math.floor(engine.state.taskTimeSpent.bugfix * 2);
+    const bugfixFile = FILES['bugfix.log'];
+    while (bugfixFile.content.length < targetBugfixLines && bugfixFile.content.length < 100) {
+      const nextLine = BUGFIX_LINES[bugfixFile.content.length % BUGFIX_LINES.length];
+      bugfixFile.content.push(nextLine);
+    }
+    if (bugfixFile.content.length > maxEditorLines) {
+      bugfixFile.content = bugfixFile.content.slice(-maxEditorLines);
+    }
+
+    const targetRefactorLines = Math.floor(engine.state.taskTimeSpent.refactor * 2);
+    const refactorFile = FILES['refactor.diff'];
+    while (refactorFile.content.length < targetRefactorLines && refactorFile.content.length < 100) {
+      const nextLine = REFACTOR_LINES[refactorFile.content.length % REFACTOR_LINES.length];
+      refactorFile.content.push(nextLine);
+    }
+    if (refactorFile.content.length > maxEditorLines) {
+      refactorFile.content = refactorFile.content.slice(-maxEditorLines);
+    }
+
+    const targetAutotestLines = Math.floor(engine.state.testCoverageFloor / 2);
+    const autotestFile = FILES['jest.config.js'];
+    while (autotestFile.content.length < targetAutotestLines && autotestFile.content.length < 100) {
+      const nextLine = AUTOTEST_LINES[autotestFile.content.length % AUTOTEST_LINES.length];
+      autotestFile.content.push(nextLine);
+    }
+    if (autotestFile.content.length > maxEditorLines) {
+      autotestFile.content = autotestFile.content.slice(-maxEditorLines);
+    }
+
+    const statsFile = FILES['stats.xls'];
+    if (statsFile) {
+      statsFile.content = generateStatsContent();
+    }
+
+    const upgradesFile = FILES['upgrades.db'];
+    if (upgradesFile) {
+      upgradesFile.content = generateUpgradesContent();
+    }
   }
 
   function selectTaskUI(task) {
-    const tabTitle = document.getElementById("tab-title");
-    const tabIcon = document.getElementById("tab-icon");
-    const filePath = document.getElementById("header-file-path");
-
-    // Clear sidebar explorer active lines
-    document.querySelectorAll(".tree-item.file").forEach(f => f.classList.remove("active"));
-
-    if (task === 'idle') {
-      tabTitle.textContent = "coffee_break.txt";
-      tabIcon.textContent = "☕";
-      filePath.textContent = "/home/developer/coffee_break.txt";
-    } else if (task === 'code') {
-      tabTitle.textContent = "main.js";
-      tabIcon.textContent = "📄";
-      filePath.textContent = "/src/main.js";
-      document.getElementById("file-main").classList.add("active");
-    } else if (task === 'test') {
-      tabTitle.textContent = "test.js";
-      tabIcon.textContent = "🔬";
-      filePath.textContent = "/tests/test.js";
-      document.getElementById("file-test").classList.add("active");
-    } else if (task === 'debug') {
-      tabTitle.textContent = "debug.log";
-      tabIcon.textContent = "🐛";
-      filePath.textContent = "/logs/debug.log";
-      document.getElementById("file-debug").classList.add("active");
-    } else if (task === 'refactor') {
-      tabTitle.textContent = "refactor.diff";
-      tabIcon.textContent = "🔧";
-      filePath.textContent = "/diffs/refactor.diff";
-      document.getElementById("file-refactor").classList.add("active");
-    } else if (task === 'autotest') {
-      tabTitle.textContent = "jest.config.js";
-      tabIcon.textContent = "🤖";
-      filePath.textContent = "/config/jest.config.js";
-      document.getElementById("file-autotest").classList.add("active");
+    const fileName = Object.keys(FILES).find(name => FILES[name].task === task);
+    if (fileName) {
+      openFile(fileName);
     }
-
     logToConsole(`>>> Switching context to: ${task.toUpperCase()}...`, 'system-msg');
   }
 
@@ -502,7 +1041,7 @@ if (typeof window !== 'undefined') {
       
       if (task === 'code') { linesArray = CODE_LINES; className = 'code-line'; }
       else if (task === 'test') { linesArray = TEST_LINES; className = 'success-msg'; }
-      else if (task === 'debug') { linesArray = DEBUG_LINES; className = 'error-msg'; }
+      else if (task === 'bugfix') { linesArray = BUGFIX_LINES; className = 'error-msg'; }
       else if (task === 'refactor') { linesArray = REFACTOR_LINES; className = 'system-msg'; }
       else if (task === 'autotest') { linesArray = AUTOTEST_LINES; className = 'system-msg'; }
 
@@ -519,10 +1058,9 @@ if (typeof window !== 'undefined') {
     line.textContent = message;
     terminal.appendChild(line);
 
-    if (terminal.childNodes.length > 50) {
+    while (terminal.childNodes.length > maxConsoleLines) {
       terminal.removeChild(terminal.firstChild);
     }
-    terminal.scrollTop = terminal.scrollHeight;
   }
 
   function renderUI(focusVal, fatigueVal, efficiency) {
@@ -548,21 +1086,22 @@ if (typeof window !== 'undefined') {
     // Metrics
     document.getElementById("sidebar-loc").textContent = `${Math.floor(engine.state.loc)} LOC`;
     document.getElementById("stat-loc").textContent = `${Math.floor(engine.state.loc)} LOC`;
+    if (engine.state.tutorialStep < 1.8) {
+      document.getElementById("stat-loc-sub").textContent = "Hidden bugs: -";
+    } else {
+      const hiddenBugsCount = Math.floor(engine.state.hiddenBugs);
+      document.getElementById("stat-loc-sub").textContent = `Hidden bugs: ${hiddenBugsCount}`;
+    }
     
     const featPoints = Math.floor(engine.state.featurePoints);
-    const totalFeatures = engine.currentContract ? Math.round(engine.currentContract.backlog) : 0;
     document.getElementById("stat-backlog").innerHTML = `
-      <span class="feat-backlog">${featPoints} / ${totalFeatures}</span>
+      <span class="feat-backlog">${featPoints}</span>
       <span style="font-size: 0.8rem; color: var(--color-muted); font-weight: normal; margin-left: 2px;">Pts</span>
     `;
 
     let minLocDisplay = "-";
     if (engine.currentContract) {
-      if (engine.state.featurePoints === 0) {
-        minLocDisplay = "Completed";
-      } else {
-        minLocDisplay = `${engine.state.minLoc.toFixed(1)}`;
-      }
+      minLocDisplay = `${engine.state.minLoc.toFixed(1)}`;
     }
     document.getElementById("stat-min-loc").textContent = `Min LOC: ${minLocDisplay}`;
 
@@ -673,16 +1212,16 @@ if (typeof window !== 'undefined') {
       lockTaskButton('code');
     }
 
-    // Debug button status: disable when revealed bugs is zero (revealedBugs <= 0.05)
-    const isDebugUnlocked = (engine.state.tutorialStep >= 6) || (engine.state.tutorialStep >= 2);
-    if (isDebugUnlocked) {
+    // Bugfix button status: disable when revealed bugs is zero (revealedBugs <= 0.05)
+    const isBugfixUnlocked = (engine.state.tutorialStep >= 6) || (engine.state.tutorialStep >= 2);
+    if (isBugfixUnlocked) {
       if (engine.state.revealedBugs <= 0.05) {
-        lockTaskButton('debug');
+        lockTaskButton('bugfix');
       } else {
-        unlockTaskButton('debug');
+        unlockTaskButton('bugfix');
       }
     } else {
-      lockTaskButton('debug');
+      lockTaskButton('bugfix');
     }
 
     // Test button status: disable until first backlog point is reduced or testCoverage >= 100%
@@ -858,6 +1397,7 @@ if (typeof window !== 'undefined') {
       skipBtn.style.display = 'none';
       syncTutorialButtonsUI();
       highlightTaskButton('code');
+      initializeProjectFiles();
       logToConsole("[SYSTEM] Course started: Hello World project. Click '💻 Code' to start.", "success-msg");
     } 
     
@@ -865,6 +1405,7 @@ if (typeof window !== 'undefined') {
       overlay.style.display = 'none';
       syncTutorialButtonsUI();
       highlightTaskButton('code');
+      initializeProjectFiles();
       logToConsole("[SYSTEM] Project 2 loaded: Calculator App. Click '💻 Code' to start writing code.", "success-msg");
     }
     
@@ -872,14 +1413,15 @@ if (typeof window !== 'undefined') {
       engine.state.tutorialStep = 2;
       overlay.style.display = 'none';
       syncTutorialButtonsUI();
-      highlightTaskButton('debug');
-      logToConsole("[SYSTEM] Course Unit 2: Debugging. Click '🐛 Debug' to remove discovered bugs.", "success-msg");
+      highlightTaskButton('bugfix');
+      logToConsole("[SYSTEM] Course Unit 2: Bugfixing. Click '🐛 Bugfix' to remove discovered bugs.", "success-msg");
     } 
     
     else if (engine.state.tutorialStep === 2.8) {
       overlay.style.display = 'none';
       syncTutorialButtonsUI();
       highlightTaskButton('code');
+      initializeProjectFiles();
       logToConsole("[SYSTEM] Project 3 loaded: Todo List. Click '💻 Code' to start writing code.", "success-msg");
     }
     
@@ -895,6 +1437,7 @@ if (typeof window !== 'undefined') {
       overlay.style.display = 'none';
       syncTutorialButtonsUI();
       highlightTaskButton('code');
+      initializeProjectFiles();
       logToConsole("[SYSTEM] Project 4 loaded: Weather App. Click '💻 Code' to start writing code.", "success-msg");
     }
     
@@ -910,6 +1453,7 @@ if (typeof window !== 'undefined') {
       overlay.style.display = 'none';
       syncTutorialButtonsUI();
       highlightTaskButton('code');
+      initializeProjectFiles();
       logToConsole("[SYSTEM] Project 5 loaded: Sample Ecommerce. Click '💻 Code' to start writing code.", "success-msg");
     }
     
@@ -925,11 +1469,12 @@ if (typeof window !== 'undefined') {
       engine.state.tutorialStep = 6;
       engine.state.cash = 10.0;
       engine.state.xp = 0;
-      engine.loadContract(0);
+      engine.loadContract(5);
       overlay.style.display = 'none';
       unlockAllTaskButtons();
       clearHighlights();
       updateProjectUIHeader();
+      initializeProjectFiles();
       logToConsole("[SYSTEM] Course finished! Contract unlocked: Bakery Website.", "success-msg");
     }
   }
@@ -972,10 +1517,10 @@ if (typeof window !== 'undefined') {
 
   function syncTutorialButtonsUI() {
     if (engine.state.tutorialStep < 6) {
-      ['code', 'test', 'debug', 'refactor', 'autotest'].forEach(t => lockTaskButton(t));
+      ['code', 'test', 'bugfix', 'refactor', 'autotest'].forEach(t => lockTaskButton(t));
       const step = engine.state.tutorialStep;
       if (step >= 1) unlockTaskButton('code');
-      if (step >= 2) unlockTaskButton('debug');
+      if (step >= 2) unlockTaskButton('bugfix');
       if (step >= 3) unlockTaskButton('test');
       if (step >= 4) unlockTaskButton('refactor');
       if (step >= 5) unlockTaskButton('autotest');
@@ -985,7 +1530,7 @@ if (typeof window !== 'undefined') {
   }
 
   function unlockAllTaskButtons() {
-    ['code', 'test', 'debug', 'refactor', 'autotest'].forEach(t => unlockTaskButton(t));
+    ['code', 'test', 'bugfix', 'refactor', 'autotest'].forEach(t => unlockTaskButton(t));
   }
 
   function highlightTaskButton(task) {
@@ -1079,6 +1624,7 @@ if (typeof window !== 'undefined') {
       btn.onclick = () => {
         overlay.style.display = 'none';
         updateProjectUIHeader();
+        initializeProjectFiles();
         logToConsole(`[SYSTEM] Loaded new project: ${engine.currentContract.title}. Backlog: ${engine.currentContract.backlog} Points.`, 'success-msg');
         btn.onclick = handleTutorialAction;
       };
@@ -1128,9 +1674,9 @@ if (typeof window !== 'undefined') {
     for (let i = 0; i < 160; i++) simEngine.tick(0.05);
     logToConsole(`[RESULT] Coverage: ${simEngine.state.testCoverage.toFixed(1)}% | Revealed Bugs: ${simEngine.state.revealedBugs.toFixed(1)}`, "system-msg");
 
-    // Phase 3: Debug for 6s
-    simEngine.selectTask('debug');
-    logToConsole(">>> Task: Debugging (Duration: 6.0s) ...", "system-msg");
+    // Phase 3: Bugfix for 6s
+    simEngine.selectTask('bugfix');
+    logToConsole(">>> Task: Bugfixing (Duration: 6.0s) ...", "system-msg");
     for (let i = 0; i < 120; i++) simEngine.tick(0.05);
     logToConsole(`[RESULT] Bugs Left: ${simEngine.state.revealedBugs.toFixed(1)} | Backlog: ${Math.round(simEngine.state.backlog)}`, "system-msg");
 
@@ -1144,10 +1690,10 @@ if (typeof window !== 'undefined') {
     }
     logToConsole(`[RESULT] Final Backlog: ${simEngine.state.backlog.toFixed(1)} | Final LOC: ${Math.round(simEngine.state.loc)}`, "system-msg");
 
-    // Phase 5: Test and Debug remainder
+    // Phase 5: Test and Bugfix remainder
     simEngine.selectTask('test');
     for (let i = 0; i < 160; i++) simEngine.tick(0.05);
-    simEngine.selectTask('debug');
+    simEngine.selectTask('bugfix');
     safety = 0;
     while(simEngine.state.revealedBugs > 0.1 && safety < 800) {
       simEngine.tick(0.05);

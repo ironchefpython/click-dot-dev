@@ -12,7 +12,9 @@ const DEVELOPER_PHASE = {
       complexity: 1.2,
       cashReward: 35,
       xpReward: 50,
-      isCourse: false
+      isCourse: false,
+      requireBacklogReduction: true,
+      requiredTestCoverage: 99.9
     },
     {
       id: 'ecommerce',
@@ -26,7 +28,9 @@ const DEVELOPER_PHASE = {
       complexity: 1.8,
       cashReward: 100,
       xpReward: 150,
-      isCourse: false
+      isCourse: false,
+      requireBacklogReduction: true,
+      requiredTestCoverage: 99.9
     },
     {
       id: 'chat',
@@ -40,7 +44,9 @@ const DEVELOPER_PHASE = {
       complexity: 2.5,
       cashReward: 280,
       xpReward: 350,
-      isCourse: false
+      isCourse: false,
+      requireBacklogReduction: true,
+      requiredTestCoverage: 99.9
     },
     {
       id: 'crm',
@@ -54,7 +60,9 @@ const DEVELOPER_PHASE = {
       complexity: 3.5,
       cashReward: 800,
       xpReward: 800,
-      isCourse: false
+      isCourse: false,
+      requireBacklogReduction: true,
+      requiredTestCoverage: 99.9
     }
   ],
   ranks: [
