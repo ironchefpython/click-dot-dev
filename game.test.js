@@ -556,6 +556,67 @@ describe('Solo Coder Game - UI Binding & Integration Tests', () => {
     jest.useRealTimers();
     window.location.hash = '';
   });
+
+  test('should load starting state D1 from URL hash fragment and prompt to accept bakery', () => {
+    window.location.hash = '#D1';
+    jest.useFakeTimers();
+    require('./main.js');
+
+    const domEvent = new Event('DOMContentLoaded');
+    document.dispatchEvent(domEvent);
+
+    // Verify engine state matches D1 starting conditions
+    expect(window.engine.state.contractIndex).toBe(5);
+    expect(window.engine.state.tutorialStep).toBe(6.0);
+    expect(window.engine.state.xp).toBe(50);
+    expect(window.engine.state.cash).toBe(20);
+    expect(window.engine.state.purchasedUpgrades).toEqual(['keyboard']);
+
+    // Verify UI overlay title is set for D1 start
+    const title = document.getElementById("tutorial-title");
+    expect(title.textContent).toBe("Accept Contract: bakery-website");
+
+    // Click accept and verify overlay is closed, tasks are unlocked
+    const actionBtn = document.getElementById("tutorial-action-btn");
+    actionBtn.click();
+
+    const overlay = document.getElementById("tutorial-overlay");
+    expect(overlay.style.display).toBe("none");
+
+    const codeRadio = document.querySelector('input[value="code"]');
+    expect(codeRadio.disabled).toBe(false);
+
+    jest.useRealTimers();
+    window.location.hash = '';
+  });
+
+  test('should display the feature complete percentage next to Min LOC in backlog subtext when contract is active', () => {
+    jest.useFakeTimers();
+    require('./main.js');
+
+    const domEvent = new Event('DOMContentLoaded');
+    document.dispatchEvent(domEvent);
+
+    // Set engine state with an active contract, a specific complexity and difficulty
+    const mockContract = {
+      id: 'mock-contract',
+      difficulty: 2.0,
+      complexity: 1.5,
+      backlog: 5,
+    };
+    window.engine.currentContract = mockContract;
+    window.engine.state.complexity = 1.5;
+
+    // Trigger UI render tick
+    jest.advanceTimersByTime(50);
+
+    const minLocEl = document.getElementById('stat-min-loc');
+    // Prob = 0.9 / (2.0 * 1.5) = 0.3
+    // Percentage = 30.0%
+    expect(minLocEl.textContent).toContain('(30.0% chance)');
+
+    jest.useRealTimers();
+  });
 });
 
 describe('Solo Coder Game - Tutorial Project Time Calibration', () => {

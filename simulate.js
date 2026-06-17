@@ -322,26 +322,86 @@ function simulateCareer() {
   return results;
 }
 
-// ─── Entry point (when run directly) ─────────────────────────────────────────
+function simulateAllStartingConditions() {
+  const results = [];
+  const startingConditions = {
+    ...TUTORIAL_PHASE.startingConditions,
+    ...DEVELOPER_PHASE.startingConditions
+  };
 
-if (require.main === module) {
-  const results = simulateCareer();
+  for (const [key, cond] of Object.entries(startingConditions)) {
+    const game = new DevGameEngine();
+    
+    // Set up initial state according to starting condition
+    game.state.xp = cond.xp || 0;
+    game.state.cash = cond.cash || 0;
+    game.state.loc = cond.loc || 0;
+    game.state.hiddenBugs = cond.hiddenBugs || 0;
+    game.state.revealedBugs = cond.revealedBugs || 0;
+    game.state.testCoverage = cond.testCoverage || 0;
+    game.state.testCoverageFloor = cond.testCoverageFloor || 0;
+    
+    let contractComplexity = 1.0;
+    if (cond.contractIndex >= 5) {
+      const devIndex = cond.contractIndex - 5;
+      if (DEVELOPER_PHASE.contracts[devIndex]) {
+        contractComplexity = DEVELOPER_PHASE.contracts[devIndex].complexity || 1.0;
+      }
+    } else {
+      if (TUTORIAL_PHASE.contracts[cond.contractIndex]) {
+        contractComplexity = TUTORIAL_PHASE.contracts[cond.contractIndex].complexity || 1.0;
+      }
+    }
+    
+    game.state.complexity = cond.complexity !== undefined ? cond.complexity : contractComplexity;
+    game.state.manualTestFactor = cond.manualTestFactor || 1.0;
+    game.state.purchasedUpgrades = cond.purchasedUpgrades ? [...cond.purchasedUpgrades] : [];
+    game.state.tutorialStep = cond.tutorialStep !== undefined ? cond.tutorialStep : 6;
+    
+    const tickCounter = { count: 0 };
+    const { taskTimes, finalLoc, finalMinLoc, shipped } = simulateProject(game, cond.contractIndex, tickCounter);
+    
+    let title = 'procedural';
+    if (cond.contractIndex >= 5) {
+      const devIndex = cond.contractIndex - 5;
+      if (DEVELOPER_PHASE.contracts[devIndex]) {
+        title = DEVELOPER_PHASE.contracts[devIndex].title;
+      }
+    } else {
+      if (TUTORIAL_PHASE.contracts[cond.contractIndex]) {
+        title = TUTORIAL_PHASE.contracts[cond.contractIndex].title;
+      }
+    }
+    
+    results.push({
+      label: `${key}: ${title}`,
+      target: key.startsWith('T') ? tutorialTargets[cond.contractIndex] : null,
+      ...taskTimes,
+      total: Object.values(taskTimes).reduce((a, b) => a + b, 0),
+      loc: finalLoc,
+      minLoc: finalMinLoc,
+      shipped: shipped
+    });
+  }
+  return results;
+}
+
+function printResultsTable(titleBanner, results) {
+  const cols = [
+    { name: 'Project', width: 28, align: 'left', key: 'label' },
+    { name: 'LOC', width: 6, align: 'right', format: v => v.loc.toFixed(1) },
+    { name: 'Min LOC', width: 8, align: 'right', format: v => v.minLoc.toFixed(1) },
+    { name: 'Code', width: 6, align: 'right', format: v => v.code.toFixed(1) },
+    { name: 'Test', width: 6, align: 'right', format: v => v.test.toFixed(1) },
+    { name: 'Bugfix', width: 6, align: 'right', format: v => v.bugfix.toFixed(1) },
+    { name: 'Refactor', width: 8, align: 'right', format: v => v.refactor.toFixed(1) },
+    { name: 'Coverage', width: 8, align: 'right', format: v => v.autotest.toFixed(1) },
+    { name: 'Idle', width: 6, align: 'right', format: v => v.idle.toFixed(1) },
+    { name: 'Total', width: 8, align: 'right', format: v => v.shipped ? v.total.toFixed(1) : 'TIMEOUT' },
+    { name: 'Target', width: 6, align: 'right', format: v => v.target !== null ? v.target.toFixed(1) : '-' }
+  ];
 
   if (process.stdout.isTTY) {
-    const cols = [
-      { name: 'Project', width: 28, align: 'left', key: 'label' },
-      { name: 'LOC', width: 6, align: 'right', format: v => v.loc.toFixed(1) },
-      { name: 'Min LOC', width: 8, align: 'right', format: v => v.minLoc.toFixed(1) },
-      { name: 'Code', width: 6, align: 'right', format: v => v.code.toFixed(1) },
-      { name: 'Test', width: 6, align: 'right', format: v => v.test.toFixed(1) },
-      { name: 'Bugfix', width: 6, align: 'right', format: v => v.bugfix.toFixed(1) },
-      { name: 'Refactor', width: 8, align: 'right', format: v => v.refactor.toFixed(1) },
-      { name: 'Coverage', width: 8, align: 'right', format: v => v.autotest.toFixed(1) },
-      { name: 'Idle', width: 6, align: 'right', format: v => v.idle.toFixed(1) },
-      { name: 'Total', width: 8, align: 'right', format: v => v.shipped ? v.total.toFixed(1) : 'TIMEOUT' },
-      { name: 'Target', width: 6, align: 'right', format: v => v.target !== null ? v.target.toFixed(1) : '-' }
-    ];
-
     const topBorder = '┌' + cols.map(c => '─'.repeat(c.width + 2)).join('┬') + '┐';
     const midBorder = '├' + cols.map(c => '─'.repeat(c.width + 2)).join('┼') + '┤';
     const botBorder = '└' + cols.map(c => '─'.repeat(c.width + 2)).join('┴') + '┘';
@@ -361,7 +421,7 @@ if (require.main === module) {
     const bannerLine = '='.repeat(bannerWidth);
 
     console.log('\n' + bannerLine);
-    console.log(' '.repeat(Math.max(0, Math.floor((bannerWidth - 34) / 2))) + 'DevLoop Career Playtime Simulation');
+    console.log(' '.repeat(Math.max(0, Math.floor((bannerWidth - titleBanner.length) / 2))) + titleBanner);
     console.log(bannerLine);
     console.log(topBorder);
     console.log(formatRow(cols.map(c => c.name)));
@@ -376,7 +436,8 @@ if (require.main === module) {
     console.log(botBorder);
     console.log(bannerLine + '\n');
   } else {
-    const headers = ['Project', 'LOC', 'Min LOC', 'Code', 'Test', 'Bugfix', 'Refactor', 'Coverage', 'Idle', 'Total', 'Target'];
+    const headers = cols.map(c => c.name);
+    console.log('\n### ' + titleBanner);
     console.log('| ' + headers.join(' | ') + ' |');
     console.log('| ' + headers.map(h => (h === 'Project' ? ':---' : '---:')).join(' | ') + ' |');
     results.forEach(r => {
@@ -398,6 +459,16 @@ if (require.main === module) {
   }
 }
 
+// ─── Entry point (when run directly) ─────────────────────────────────────────
+
+if (require.main === module) {
+  const careerResults = simulateCareer();
+  printResultsTable('DevLoop Career Playtime Simulation', careerResults);
+
+  const startingConditionResults = simulateAllStartingConditions();
+  printResultsTable('Starting Conditions Simulation', startingConditionResults);
+}
+
 // ─── Exports (for calibrate_prob.js, game.test.js, etc.) ─────────────────────
 
-module.exports = { checkTaskPossible, runTick, simulateProject, simulateCareer, DT };
+module.exports = { checkTaskPossible, runTick, simulateProject, simulateCareer, simulateAllStartingConditions, DT };

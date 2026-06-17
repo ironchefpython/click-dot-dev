@@ -25,7 +25,8 @@ const DEVELOPER_PHASE = {
       growthScale: 25,
       transitionOffset: 6,
       baseBugRate: 0.015,
-      complexity: 1.8,
+      bugfixClearProb: 0.10,
+      complexity: 1.4,
       cashReward: 100,
       xpReward: 150,
       isCourse: false,
@@ -41,6 +42,7 @@ const DEVELOPER_PHASE = {
       growthScale: 30,
       transitionOffset: 7,
       baseBugRate: 0.015,
+      bugfixClearProb: 0.10,
       complexity: 2.5,
       cashReward: 280,
       xpReward: 350,
@@ -57,9 +59,44 @@ const DEVELOPER_PHASE = {
       growthScale: 35,
       transitionOffset: 8,
       baseBugRate: 0.02,
+      bugfixClearProb: 0.10,
       complexity: 3.5,
       cashReward: 800,
       xpReward: 800,
+      isCourse: false,
+      requireBacklogReduction: true,
+      requiredTestCoverage: 99.9
+    },
+    {
+      id: 'fitness',
+      title: 'fitness-tracker-app',
+      folderName: '📁 fitness_tracker',
+      backlog: 12,
+      difficulty: 8.0,
+      growthScale: 40,
+      transitionOffset: 9,
+      baseBugRate: 0.02,
+      bugfixClearProb: 0.10,
+      complexity: 4.2,
+      cashReward: 1200,
+      xpReward: 1200,
+      isCourse: false,
+      requireBacklogReduction: true,
+      requiredTestCoverage: 99.9
+    },
+    {
+      id: 'analytics',
+      title: 'analytics-dashboard',
+      folderName: '📁 analytics_dashboard',
+      backlog: 15,
+      difficulty: 9.0,
+      growthScale: 45,
+      transitionOffset: 10,
+      baseBugRate: 0.025,
+      bugfixClearProb: 0.10,
+      complexity: 5.0,
+      cashReward: 2000,
+      xpReward: 2000,
       isCourse: false,
       requireBacklogReduction: true,
       requiredTestCoverage: 99.9
@@ -127,7 +164,43 @@ const DEVELOPER_PHASE = {
       isCourse: false
     };
   },
-  startingConditions: {}
+  startingConditions: {
+    D1: {
+      contractIndex: 5,
+      tutorialStep: 6.0,
+      xp: 50,
+      cash: 20,
+      purchasedUpgrades: ['keyboard']
+    },
+    D2: {
+      contractIndex: 6,
+      tutorialStep: 6.0,
+      xp: 150,
+      cash: 100,
+      purchasedUpgrades: ['keyboard', 'coffee']
+    },
+    D3: {
+      contractIndex: 7,
+      tutorialStep: 6.0,
+      xp: 450,
+      cash: 300,
+      purchasedUpgrades: ['keyboard', 'coffee', 'linter']
+    },
+    D4: {
+      contractIndex: 8,
+      tutorialStep: 6.0,
+      xp: 800,
+      cash: 600,
+      purchasedUpgrades: ['keyboard', 'coffee', 'linter', 'copilot']
+    },
+    D5: {
+      contractIndex: 9,
+      tutorialStep: 6.0,
+      xp: 1500,
+      cash: 1000,
+      purchasedUpgrades: ['keyboard', 'coffee', 'linter', 'copilot', 'framework']
+    }
+  }
 };
 
 if (typeof module !== 'undefined') {

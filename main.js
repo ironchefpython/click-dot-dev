@@ -401,6 +401,30 @@ if (typeof window !== 'undefined') {
           btn.textContent = "Accept Sample Ecommerce";
           btn.onclick = () => { handleTutorialAction(); };
         }
+      } else if (hashKey && hashKey.startsWith('D')) {
+        if (overlay) overlay.style.display = 'flex';
+        const contract = engine.currentContract;
+        const titleText = contract ? contract.title : 'bakery-website';
+        const backlogText = contract ? contract.backlog : 5;
+        
+        if (title) title.textContent = `Accept Contract: ${titleText}`;
+        if (text) {
+          text.innerHTML = `
+            <p>Welcome back! Let's resume your software developer career.</p>
+            <p style="margin-top: 10px;">Accept the <strong>${titleText}</strong> contract to get started.</p>
+          `;
+        }
+        if (btn) {
+          btn.textContent = `Accept ${titleText}`;
+          btn.onclick = () => {
+            overlay.style.display = 'none';
+            unlockAllTaskButtons();
+            clearHighlights();
+            updateProjectUIHeader();
+            initializeProjectFiles();
+            logToConsole(`[SYSTEM] Loaded developer contract: ${titleText}. Backlog: ${backlogText} Points.`, 'success-msg');
+          };
+        }
       }
     }
 
@@ -1101,7 +1125,10 @@ if (typeof window !== 'undefined') {
 
     let minLocDisplay = "-";
     if (engine.currentContract) {
-      minLocDisplay = `${engine.state.minLoc.toFixed(1)}`;
+      const difficulty = engine.currentContract.difficulty || (engine.currentContract.isCourse ? 1.0 : 10.0);
+      const prob = Formulas.calculateFeatureCompleteProb(engine.currentContract, difficulty, engine.state.complexity);
+      const probPercent = (prob * 100).toFixed(1);
+      minLocDisplay = `${engine.state.minLoc.toFixed(1)} (${probPercent}% chance)`;
     }
     document.getElementById("stat-min-loc").textContent = `Min LOC: ${minLocDisplay}`;
 
