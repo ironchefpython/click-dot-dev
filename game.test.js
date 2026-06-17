@@ -346,9 +346,8 @@ describe('Solo Coder Game - UI Binding & Integration Tests', () => {
     // Query the DOM again to avoid stale element reference after rebuild
     const updatedCards = document.querySelectorAll('.tutorial-upgrade-card');
     const updatedOssCard = Array.from(updatedCards).find(c => c.innerHTML.includes('Open-Source IDE'));
-    
-    // Verify that the card displays "Installed"
-    expect(updatedOssCard.innerHTML).toContain('Installed');
+    // Verify that the card is no longer in the DOM
+    expect(updatedOssCard).toBeUndefined();
     
     jest.useRealTimers();
   });

@@ -14,7 +14,7 @@
 
     createLineGenerator = require('./linegen.js');
     codeGrammar = require('./grammar-code.js');
-    testGrammar = require('./test.js');
+    testGrammar = require('./grammar-autotest.js');
     bugfixGrammar = require('./grammar-bugfix.js');
     refactorGrammar = require('./grammar-refactor.js');
     autotestGrammar = require('./grammar-autotest.js');
@@ -1297,9 +1297,9 @@ if (typeof window !== 'undefined') {
         const isPurchased = engine.state.purchasedUpgrades.includes(upg.id);
         const isAffordable = engine.state.xp >= upg.costXP;
 
-        if (isPurchased) {
-          card.classList.add("purchased");
-        } else if (!isAffordable) {
+        if (isPurchased) { return; }
+
+        if (!isAffordable) {
           card.classList.add("disabled");
         }
 
@@ -1331,9 +1331,9 @@ if (typeof window !== 'undefined') {
       const isPurchased = engine.state.purchasedUpgrades.includes(upg.id);
       const isAffordable = engine.state.cash >= upg.costCash && engine.state.xp >= upg.costXP;
 
-      if (isPurchased) {
-        card.classList.add("purchased");
-      } else if (!isAffordable) {
+      if (isPurchased) { return; }
+
+      if (!isAffordable) {
         card.classList.add("disabled");
       }
 
