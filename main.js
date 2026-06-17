@@ -51,6 +51,7 @@ if (typeof window !== 'undefined') {
       icon: '📄',
       path: '/src/main.js',
       content: [],
+      totalGenerated: 0,
       placeholder: '// Writing code... Select Code task to begin.'
     },
     'test.js': {
@@ -59,6 +60,7 @@ if (typeof window !== 'undefined') {
       icon: '🔬',
       path: '/tests/test.js',
       content: [],
+      totalGenerated: 0,
       placeholder: '// Running tests... Select Test task to begin.'
     },
     'bugfix.log': {
@@ -67,6 +69,7 @@ if (typeof window !== 'undefined') {
       icon: '🐛',
       path: '/logs/bugfix.log',
       content: [],
+      totalGenerated: 0,
       placeholder: '# Bugfix log. Select Bugfix task to begin.'
     },
     'refactor.diff': {
@@ -75,6 +78,7 @@ if (typeof window !== 'undefined') {
       icon: '🔧',
       path: '/diffs/refactor.diff',
       content: [],
+      totalGenerated: 0,
       placeholder: '# Refactor diff. Select Refactor task to begin.'
     },
     'jest.config.js': {
@@ -83,6 +87,7 @@ if (typeof window !== 'undefined') {
       icon: '🤖',
       path: '/config/jest.config.js',
       content: [],
+      totalGenerated: 0,
       placeholder: '// Unit tests configuration. Select Unit Tests task to begin.'
     },
     'stats.xls': {
@@ -546,6 +551,9 @@ if (typeof window !== 'undefined') {
     Object.keys(FILES).forEach(fileName => {
       if (fileName !== 'coffee_break.txt') {
         FILES[fileName].content = [];
+        if ('totalGenerated' in FILES[fileName]) {
+          FILES[fileName].totalGenerated = 0;
+        }
       }
     });
   }
@@ -926,8 +934,9 @@ if (typeof window !== 'undefined') {
   function updateFileContents() {
     const targetLocLines = Math.floor(engine.state.loc);
     const mainFile = FILES['main.js'];
-    while (mainFile.content.length < targetLocLines && mainFile.content.length < 500) {
+    while (mainFile.totalGenerated < targetLocLines) {
       mainFile.content.push(codeLineGen());
+      mainFile.totalGenerated++;
     }
     if (mainFile.content.length > maxEditorLines) {
       mainFile.content = mainFile.content.slice(-maxEditorLines);
@@ -935,8 +944,9 @@ if (typeof window !== 'undefined') {
 
     const targetTestLines = Math.floor(engine.state.testCoverage / 2);
     const testFile = FILES['test.js'];
-    while (testFile.content.length < targetTestLines && testFile.content.length < 100) {
+    while (testFile.totalGenerated < targetTestLines) {
       testFile.content.push(testLineGen());
+      testFile.totalGenerated++;
     }
     if (testFile.content.length > maxEditorLines) {
       testFile.content = testFile.content.slice(-maxEditorLines);
@@ -944,8 +954,9 @@ if (typeof window !== 'undefined') {
 
     const targetBugfixLines = Math.floor(engine.state.taskTimeSpent.bugfix * 2);
     const bugfixFile = FILES['bugfix.log'];
-    while (bugfixFile.content.length < targetBugfixLines && bugfixFile.content.length < 100) {
+    while (bugfixFile.totalGenerated < targetBugfixLines) {
       bugfixFile.content.push(bugfixLineGen());
+      bugfixFile.totalGenerated++;
     }
     if (bugfixFile.content.length > maxEditorLines) {
       bugfixFile.content = bugfixFile.content.slice(-maxEditorLines);
@@ -953,8 +964,9 @@ if (typeof window !== 'undefined') {
 
     const targetRefactorLines = Math.floor(engine.state.taskTimeSpent.refactor * 2);
     const refactorFile = FILES['refactor.diff'];
-    while (refactorFile.content.length < targetRefactorLines && refactorFile.content.length < 100) {
+    while (refactorFile.totalGenerated < targetRefactorLines) {
       refactorFile.content.push(refactorLineGen());
+      refactorFile.totalGenerated++;
     }
     if (refactorFile.content.length > maxEditorLines) {
       refactorFile.content = refactorFile.content.slice(-maxEditorLines);
@@ -962,8 +974,9 @@ if (typeof window !== 'undefined') {
 
     const targetAutotestLines = Math.floor(engine.state.testCoverageFloor / 2);
     const autotestFile = FILES['jest.config.js'];
-    while (autotestFile.content.length < targetAutotestLines && autotestFile.content.length < 100) {
+    while (autotestFile.totalGenerated < targetAutotestLines) {
       autotestFile.content.push(autotestLineGen());
+      autotestFile.totalGenerated++;
     }
     if (autotestFile.content.length > maxEditorLines) {
       autotestFile.content = autotestFile.content.slice(-maxEditorLines);
