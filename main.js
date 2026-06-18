@@ -14,7 +14,7 @@
 
     createLineGenerator = require('./linegen.js');
     codeGrammar = require('./grammar-code.js');
-    testGrammar = require('./grammar-autotest.js');
+    testGrammar = require('./grammar-testing.js');
     bugfixGrammar = require('./grammar-bugfix.js');
     refactorGrammar = require('./grammar-refactor.js');
     autotestGrammar = require('./grammar-autotest.js');
@@ -54,11 +54,11 @@ if (typeof window !== 'undefined') {
       totalGenerated: 0,
       placeholder: '// Writing code... Select Code task to begin.'
     },
-    'test.js': {
+    'grammar-testing.js': {
       id: 'file-test',
       task: 'test',
       icon: '🔬',
-      path: '/tests/test.js',
+      path: '/tests/grammar-testing.js',
       content: [],
       totalGenerated: 0,
       placeholder: '// Running tests... Select Test task to begin.'
@@ -776,7 +776,7 @@ if (typeof window !== 'undefined') {
     let totalLines = 0;
     if (activeTab === 'main.js') {
       totalLines = Math.floor(engine.state.loc);
-    } else if (activeTab === 'test.js') {
+    } else if (activeTab === 'grammar-testing.js') {
       totalLines = Math.floor(engine.state.testCoverage / 2);
     } else if (activeTab === 'bugfix.log') {
       totalLines = Math.floor(engine.state.taskTimeSpent.bugfix * 2);
@@ -943,7 +943,7 @@ if (typeof window !== 'undefined') {
     }
 
     const targetTestLines = Math.floor(engine.state.testCoverage / 2);
-    const testFile = FILES['test.js'];
+    const testFile = FILES['grammar-testing.js'];
     while (testFile.totalGenerated < targetTestLines) {
       testFile.content.push(testLineGen());
       testFile.totalGenerated++;
