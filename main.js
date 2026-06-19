@@ -222,6 +222,8 @@ if (typeof window !== 'undefined') {
   const unlockAllTaskButtons = () => UIUtils.unlockAllTaskButtons();
   const clearHighlights = () => UIUtils.clearHighlights();
 
+
+
   let terminalScrollTimer = 0;
   let lastUpgradesStateKey = '';
 
@@ -232,7 +234,7 @@ if (typeof window !== 'undefined') {
   // Initialize DOM bindings on DOMContentLoaded
   document.addEventListener("DOMContentLoaded", () => {
     // Ship Project button
-    document.getElementById("ship-project-btn").addEventListener("click", () => {
+    UIUtils.getEl("ship-project-btn").addEventListener("click", () => {
       let report = engine.shipProject();
       if (report) {
         TutorialUI.showShippingSplash(report);
@@ -319,7 +321,7 @@ if (typeof window !== 'undefined') {
     window.addEventListener("resize", () => {
       updateDynamicLineLimits();
       renderEditorContent();
-      const terminal = document.getElementById("console-output");
+      const terminal = UIUtils.getEl("console-output");
       if (terminal) {
         while (terminal.childNodes.length > maxConsoleLines) {
           terminal.removeChild(terminal.firstChild);
@@ -458,12 +460,12 @@ if (typeof window !== 'undefined') {
 
   function updateProjectUIHeader() {
     if (engine.currentContract) {
-      document.getElementById("header-project-name").textContent = engine.currentContract.title;
+      UIUtils.getEl("header-project-name").textContent = engine.currentContract.title;
       const folderName = engine.currentContract.folderName;
-      document.getElementById("sidebar-folder-name").textContent = folderName ? folderName.replace('📁 ', '📁\u00A0') : '';
+      UIUtils.getEl("sidebar-folder-name").textContent = folderName ? folderName.replace('📁 ', '📁\u00A0') : '';
     } else {
-      document.getElementById("header-project-name").textContent = "No Active Project";
-      document.getElementById("sidebar-folder-name").textContent = "📁 No Project Loaded";
+      UIUtils.getEl("header-project-name").textContent = "No Active Project";
+      UIUtils.getEl("sidebar-folder-name").textContent = "📁 No Project Loaded";
     }
   }
 
@@ -491,8 +493,8 @@ if (typeof window !== 'undefined') {
   }
 
   function updateDynamicLineLimits() {
-    const editorView = document.getElementById("editor-code-view");
-    const terminal = document.getElementById("console-output");
+    const editorView = UIUtils.getEl("editor-code-view");
+    const terminal = UIUtils.getEl("console-output");
 
     if (editorView) {
       const h = editorView.clientHeight;
@@ -679,7 +681,7 @@ if (typeof window !== 'undefined') {
   }
 
   function renderEditorContent() {
-    const editorView = document.getElementById("editor-code-view");
+    const editorView = UIUtils.getEl("editor-code-view");
     if (!editorView) return;
 
     const file = FILES[activeTab];
@@ -941,7 +943,7 @@ if (typeof window !== 'undefined') {
   }
 
   function logToConsole(message, className) {
-    const terminal = document.getElementById("console-output");
+    const terminal = UIUtils.getEl("console-output");
     if (!terminal) return;
     const line = document.createElement("div");
     line.className = `terminal-line ${className || ''}`;
@@ -955,10 +957,10 @@ if (typeof window !== 'undefined') {
 
   function renderUI(focusVal, fatigueVal, efficiency) {
     // Header counters
-    document.getElementById("cash-counter").textContent = `$${engine.state.cash.toFixed(2)}`;
-    document.getElementById("xp-counter").textContent = `${Math.floor(engine.state.xp)} XP`;
+    UIUtils.getEl("cash-counter").textContent = `$${engine.state.cash.toFixed(2)}`;
+    UIUtils.getEl("xp-counter").textContent = `${Math.floor(engine.state.xp)} XP`;
     
-    const xpLabel = document.getElementById("xp-label");
+    const xpLabel = UIUtils.getEl("xp-label");
     if (xpLabel) {
       if (engine.state.tutorialStep < 6) {
         xpLabel.textContent = "LEARNING:";
@@ -969,22 +971,22 @@ if (typeof window !== 'undefined') {
     
     // Only display rate if active
     let rate = engine.state.activeTask === 'idle' ? 0.0 : (engine.xpRate || 0.0);
-    document.getElementById("xp-rate").textContent = `(+${rate.toFixed(1)}/s)`;
+    UIUtils.getEl("xp-rate").textContent = `(+${rate.toFixed(1)}/s)`;
     
-    document.getElementById("rank-value").textContent = engine.getRank();
+    UIUtils.getEl("rank-value").textContent = engine.getRank();
     
     // Metrics
-    document.getElementById("sidebar-loc").textContent = `${Math.floor(engine.state.loc)} LOC`;
-    document.getElementById("stat-loc").textContent = `${Math.floor(engine.state.loc)} LOC`;
+    UIUtils.getEl("sidebar-loc").textContent = `${Math.floor(engine.state.loc)} LOC`;
+    UIUtils.getEl("stat-loc").textContent = `${Math.floor(engine.state.loc)} LOC`;
     if (engine.state.tutorialStep < 1.8) {
-      document.getElementById("stat-loc-sub").textContent = "Hidden bugs: -";
+      UIUtils.getEl("stat-loc-sub").textContent = "Hidden bugs: -";
     } else {
       const hiddenBugsCount = Math.floor(engine.state.hiddenBugs);
-      document.getElementById("stat-loc-sub").textContent = `Hidden bugs: ${hiddenBugsCount}`;
+      UIUtils.getEl("stat-loc-sub").textContent = `Hidden bugs: ${hiddenBugsCount}`;
     }
     
     const featPoints = Math.floor(engine.state.featurePoints);
-    document.getElementById("stat-backlog").innerHTML = `
+    UIUtils.getEl("stat-backlog").innerHTML = `
       <span class="feat-backlog">${featPoints}</span>
       <span style="font-size: 0.8rem; color: var(--color-muted); font-weight: normal; margin-left: 2px;">Pts</span>
     `;
@@ -996,43 +998,43 @@ if (typeof window !== 'undefined') {
       const probPercent = (prob * 100).toFixed(1);
       minLocDisplay = `${engine.state.minLoc.toFixed(1)} (${probPercent}% chance)`;
     }
-    document.getElementById("stat-min-loc").textContent = `Min LOC: ${minLocDisplay}`;
+    UIUtils.getEl("stat-min-loc").textContent = `Min LOC: ${minLocDisplay}`;
 
     // Bugs metrics (blank in Project 1, shown in Project 2 onwards)
     if (engine.state.tutorialStep < 1.8) {
-      document.getElementById("stat-bugs-found").textContent = "-";
-      document.getElementById("stat-bug-rate").textContent = "Bug rate: -";
+      UIUtils.getEl("stat-bugs-found").textContent = "-";
+      UIUtils.getEl("stat-bug-rate").textContent = "Bug rate: -";
     } else {
-      document.getElementById("stat-bugs-found").textContent = Math.floor(engine.state.revealedBugs);
-      let baseBugRate = engine.currentContract ? (engine.currentContract.baseBugRate !== undefined ? engine.currentContract.baseBugRate : 0.05) : 0.05;
+      UIUtils.getEl("stat-bugs-found").textContent = Math.floor(engine.state.revealedBugs);
+      let baseBugRate = engine.getContractConfig('baseBugRate', 0.05);
       let complexityFactor = engine.state.purchasedUpgrades.includes('framework') ? 0.7 : 1.0;
       let complexityMultiplier = 1 + (engine.state.loc / 450) * complexityFactor;
       let linterRed = engine.state.purchasedUpgrades.includes('linter') ? 0.6 : 1.0;
       let displayBugRate = Formulas.calculateBugIntroProb(baseBugRate, engine.state.complexity * complexityMultiplier, linterRed);
-      document.getElementById("stat-bug-rate").textContent = `Bug rate: ${(displayBugRate * 100).toFixed(1)}%`;
+      UIUtils.getEl("stat-bug-rate").textContent = `Bug rate: ${(displayBugRate * 100).toFixed(1)}%`;
     }
 
     // Test coverage metrics (blank in Project 1 and 2, shown in Project 3 onwards)
     // "Tested" = manual testCoverage, "Code Coverage" = testCoverageFloor
     if (engine.state.tutorialStep < 2.8) {
-      document.getElementById("stat-coverage").textContent = "-";
-      document.getElementById("progress-coverage").style.width = "0%";
-      document.getElementById("stat-coverage-floor").textContent = "Auto Floor: -";
-      document.getElementById("stat-coverage-floor-display").textContent = "-";
-      document.getElementById("progress-coverage-floor").style.width = "0%";
+      UIUtils.getEl("stat-coverage").textContent = "-";
+      UIUtils.getEl("progress-coverage").style.width = "0%";
+      UIUtils.getEl("stat-coverage-floor").textContent = "Auto Floor: -";
+      UIUtils.getEl("stat-coverage-floor-display").textContent = "-";
+      UIUtils.getEl("progress-coverage-floor").style.width = "0%";
     } else {
       const covDisplay = engine.state.testCoverage.toFixed(1);
-      document.getElementById("stat-coverage").textContent = `${covDisplay}%`;
-      document.getElementById("progress-coverage").style.width = `${engine.state.testCoverage}%`;
-      document.getElementById("stat-coverage-floor").textContent = `Auto Floor: ${Math.floor(engine.state.testCoverageFloor)}%`;
+      UIUtils.getEl("stat-coverage").textContent = `${covDisplay}%`;
+      UIUtils.getEl("progress-coverage").style.width = `${engine.state.testCoverage}%`;
+      UIUtils.getEl("stat-coverage-floor").textContent = `Auto Floor: ${Math.floor(engine.state.testCoverageFloor)}%`;
       const floorDisplay = engine.state.testCoverageFloor.toFixed(1);
-      document.getElementById("stat-coverage-floor-display").textContent = `${floorDisplay}%`;
-      document.getElementById("progress-coverage-floor").style.width = `${engine.state.testCoverageFloor}%`;
+      UIUtils.getEl("stat-coverage-floor-display").textContent = `${floorDisplay}%`;
+      UIUtils.getEl("progress-coverage-floor").style.width = `${engine.state.testCoverageFloor}%`;
     }
 
     // Code Complexity UI Update
-    const compEl = document.getElementById("stat-complexity");
-    const compSubEl = document.getElementById("stat-complexity-sub");
+    const compEl = UIUtils.getEl("stat-complexity");
+    const compSubEl = UIUtils.getEl("stat-complexity-sub");
     if (compEl) {
       const compVal = engine.state.complexity;
       let details;
@@ -1079,18 +1081,18 @@ if (typeof window !== 'undefined') {
       else if (engine.currentContract.id === 'course-todo') projectNum = 3;
       else if (engine.currentContract.id === 'course-weather') projectNum = 4;
       else if (engine.currentContract.id === 'course-ecom') projectNum = 5;
-      document.getElementById("stat-value").textContent = `${projectNum} of 5`;
-      const lbl = document.getElementById("project-value-label");
+      UIUtils.getEl("stat-value").textContent = `${projectNum} of 5`;
+      const lbl = UIUtils.getEl("project-value-label");
       if (lbl) lbl.textContent = "TUTORIAL PROJECT";
     } else {
-      document.getElementById("stat-value").textContent = `$${engine.state.codeValue.toFixed(2)}`;
-      const lbl = document.getElementById("project-value-label");
+      UIUtils.getEl("stat-value").textContent = `$${engine.state.codeValue.toFixed(2)}`;
+      const lbl = UIUtils.getEl("project-value-label");
       if (lbl) lbl.textContent = "CODEBASE VALUE";
     }
 
 
     // Ship button status
-    const shipBtn = document.getElementById("ship-project-btn");
+    const shipBtn = UIUtils.getEl("ship-project-btn");
     shipBtn.disabled = !engine.isShipReady();
 
     // Code button status: disable when backlog is empty (backlog <= 0.05)
@@ -1120,8 +1122,7 @@ if (typeof window !== 'undefined') {
     // Test button status: disable until first backlog point is reduced or testCoverage >= 100%
     const isTestUnlocked = (engine.state.tutorialStep >= 6) || (engine.state.tutorialStep >= 3);
     if (isTestUnlocked) {
-      const needBacklogReduced = engine.state.tutorialStep >= 6;
-      if ((needBacklogReduced && !engine.state.backlogReduced) || engine.state.testCoverage >= 100.0) {
+      if (engine.isBacklogReductionPending() || engine.state.testCoverage >= 100.0) {
         lockTaskButton('test');
       } else {
         unlockTaskButton('test');
@@ -1133,10 +1134,9 @@ if (typeof window !== 'undefined') {
     // Refactor button status: disable until first backlog point is reduced or complexity reaches minComplexity
     const isRefactorUnlocked = (engine.state.tutorialStep >= 6) || (engine.state.tutorialStep >= 4);
     if (isRefactorUnlocked) {
-      const needBacklogReduced = engine.state.tutorialStep >= 6;
-      const initialComplexity = engine.currentContract ? (engine.currentContract.complexity || 1.0) : 1.0;
+      const initialComplexity = engine.getContractConfig('complexity', 1.0);
       const minComplexity = Math.min(initialComplexity, 1.5);
-      if ((needBacklogReduced && !engine.state.backlogReduced) || engine.state.complexity <= minComplexity) {
+      if (engine.isBacklogReductionPending() || engine.state.complexity <= minComplexity) {
         lockTaskButton('refactor');
       } else {
         unlockTaskButton('refactor');
@@ -1169,9 +1169,9 @@ if (typeof window !== 'undefined') {
     const effCol = '#a855f7';
     const emptyCol = '#1e293b';
 
-    const pieFocus = document.getElementById("pie-focus");
-    const pieFatigue = document.getElementById("pie-fatigue");
-    const pieEfficiency = document.getElementById("pie-efficiency");
+    const pieFocus = UIUtils.getEl("pie-focus");
+    const pieFatigue = UIUtils.getEl("pie-fatigue");
+    const pieEfficiency = UIUtils.getEl("pie-efficiency");
 
     if (pieFocus) pieFocus.style.background =
       `conic-gradient(${focusCol} 0% ${focusPct}%, ${emptyCol} ${focusPct}% 100%)`;
@@ -1182,9 +1182,9 @@ if (typeof window !== 'undefined') {
     if (pieEfficiency) pieEfficiency.style.background =
       `conic-gradient(${effCol} 0% ${effFill}%, ${emptyCol} ${effFill}% 100%)`;
 
-    document.getElementById("val-focus").textContent = `${Math.round(focusPct)}%`;
-    document.getElementById("val-fatigue").textContent = `${Math.round(fatiguePct)}%`;
-    document.getElementById("stat-efficiency").textContent = `${Math.round(efficiency * 100)}%`;
+    UIUtils.getEl("val-focus").textContent = `${Math.round(focusPct)}%`;
+    UIUtils.getEl("val-fatigue").textContent = `${Math.round(fatiguePct)}%`;
+    UIUtils.getEl("stat-efficiency").textContent = `${Math.round(efficiency * 100)}%`;
 
     // Upgrades
     renderUpgradesList();

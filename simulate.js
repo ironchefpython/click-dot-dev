@@ -23,15 +23,13 @@ function checkTaskPossible(game, task) {
   if (task === 'code') {
     isGamestatePossible = game.state.backlog > 0.05;
   } else if (task === 'test') {
-    const needBacklogReduced = game.state.tutorialStep >= 6;
-    isGamestatePossible = (!needBacklogReduced || game.state.backlogReduced) && game.state.testCoverage < 100.0;
+    isGamestatePossible = (!game.isBacklogReductionPending()) && game.state.testCoverage < 100.0;
   } else if (task === 'bugfix') {
     isGamestatePossible = game.state.revealedBugs > 0.05;
   } else if (task === 'refactor') {
-    const needBacklogReduced = game.state.tutorialStep >= 6;
-    const initialComplexity = game.currentContract ? (game.currentContract.complexity || 1.0) : 1.0;
+    const initialComplexity = game.getContractConfig('complexity', 1.0);
     const minComplexity = Math.min(initialComplexity, 1.5);
-    isGamestatePossible = (!needBacklogReduced || game.state.backlogReduced) && game.state.loc > game.state.minLoc && game.state.complexity > minComplexity;
+    isGamestatePossible = (!game.isBacklogReductionPending()) && game.state.loc > game.state.minLoc && game.state.complexity > minComplexity;
   } else if (task === 'autotest') {
     const hasTutGit = game.state.purchasedUpgrades.includes('git-workflow');
     const tutGitFloorCap = hasTutGit ? 95 : 90;
@@ -125,7 +123,7 @@ function simulateProject(game, contractIdx, tickCounter, thresholds = null, maxT
   const MAX_TICKS = maxTicks; // bail out fast if misconfigured or custom limit reached
   let ticks = 0;
 
-  const initialComplexity = game.currentContract ? (game.currentContract.complexity || 1.0) : 1.0;
+  const initialComplexity = game.getContractConfig('complexity', 1.0);
 
   const activeTasks = {
     code: false,
