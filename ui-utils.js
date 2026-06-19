@@ -6,7 +6,18 @@
     Events = window.Events;
   }
 
+
+  const UI_ELEMENTS = {};
+
   const UIUtils = {
+    getEl(id) {
+      if (typeof document === 'undefined') return null;
+      if (!UI_ELEMENTS[id]) {
+        UI_ELEMENTS[id] = document.getElementById(id);
+      }
+      return UI_ELEMENTS[id];
+    },
+
     unlockTaskButton(task) {
       if (typeof document === 'undefined') return;
       const input = document.querySelector(`input[value="${task}"]`);
