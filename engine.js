@@ -32,6 +32,15 @@ function generateProceduralContract(index) {
  * Can be instantiated and ticked programmatically for automated testing
  */
 class DevGameEngine {
+  getContractConfig(key, defaultValue) {
+    if (!this.currentContract) return defaultValue;
+    return this.currentContract[key] !== undefined ? this.currentContract[key] : defaultValue;
+  }
+
+  isBacklogReductionPending() {
+    return this.getContractConfig('requireBacklogReduction', false) && !this.state.backlogReduced;
+  }
+
   constructor(initialState = null) {
     this.listeners = {};
     let initialStep = 0;
@@ -203,10 +212,10 @@ class DevGameEngine {
     this.state.loc = 0;
     this.state.hiddenBugs = 0;
     this.state.revealedBugs = 0;
-    const growthScale = this.currentContract.growthScale !== undefined ? this.currentContract.growthScale : 1443;
-    const transitionOffset = this.currentContract.transitionOffset !== undefined ? this.currentContract.transitionOffset : 9;
+    const growthScale = this.getContractConfig('growthScale', 1443);
+    const transitionOffset = this.getContractConfig('transitionOffset', 9);
     this.state.complexity = this.currentContract.complexity !== undefined ? this.currentContract.complexity : 1.0;
-    this.state.manualTestFactor = this.currentContract.manualTestFactor !== undefined ? this.currentContract.manualTestFactor : 1.0;
+    this.state.manualTestFactor = this.getContractConfig('manualTestFactor', 1.0);
     this.state.minLoc = Formulas.getMinLoc(0, growthScale, transitionOffset, this.state.complexity);
     // Set initial test coverage to the current floor
     this.state.testCoverage = this.state.testCoverageFloor;
@@ -229,13 +238,13 @@ class DevGameEngine {
     if (this.state.activeTask === taskName) return;
 
     if (taskName === 'test') {
-      if (this.currentContract && this.currentContract.requireBacklogReduction && !this.state.backlogReduced) return;
+      if (this.isBacklogReductionPending()) return;
       if (this.state.testCoverage >= 100.0) return;
     }
     if (taskName === 'refactor') {
-      const initialComplexity = this.currentContract ? (this.currentContract.complexity || 1.0) : 1.0;
+      const initialComplexity = this.getContractConfig('complexity', 1.0);
       const minComplexity = Math.min(initialComplexity, 1.5);
-      if (this.currentContract && this.currentContract.requireBacklogReduction && !this.state.backlogReduced) return;
+      if (this.isBacklogReductionPending()) return;
       if (this.state.complexity <= minComplexity) return;
     }
 
@@ -307,8 +316,8 @@ class DevGameEngine {
     if (hasTutTyping) kFocusModifier *= 1.5; // touch-typing: +50% focus build-up
 
     let focusVal = Formulas.calculateFocusVal(Formulas.K_FOCUS, activeFatigueTime, kFocusModifier);
-    const baseEfficiency = this.currentContract ? (this.currentContract.baseEfficiency !== undefined ? this.currentContract.baseEfficiency : 1.0) : 1.0;
-    const disableFatigue = this.currentContract ? this.currentContract.disableFatigue : false;
+    const baseEfficiency = this.getContractConfig('baseEfficiency', 1.0);
+    const disableFatigue = this.getContractConfig('disableFatigue', false);
     let fatigueVal = disableFatigue ? 0.0 : Formulas.calculateFatigueVal(Formulas.K_FATIGUE, Formulas.LAMBDA, displayFatigueTime);
     let efficiency = Formulas.calculateEfficiency(baseEfficiency, focusVal, fatigueVal);
 
@@ -319,14 +328,14 @@ class DevGameEngine {
       isTaskProcessed = this.processTaskAction(this.state.activeTask, efficiency, dt);
       if (this.state.activeTask === 'code' && this.state.backlog <= 0.05) {
         this.selectTask('idle');
-      } else if (this.state.activeTask === 'test' && (((this.currentContract && this.currentContract.requireBacklogReduction && !this.state.backlogReduced)) || this.state.testCoverage >= 100.0)) {
+      } else if (this.state.activeTask === 'test' && (((this.isBacklogReductionPending())) || this.state.testCoverage >= 100.0)) {
         this.selectTask('idle');
       } else if (this.state.activeTask === 'bugfix' && this.state.revealedBugs <= 0.05) {
         this.selectTask('idle');
       } else if (this.state.activeTask === 'refactor') {
-        const initialComplexity = this.currentContract ? (this.currentContract.complexity || 1.0) : 1.0;
+        const initialComplexity = this.getContractConfig('complexity', 1.0);
         const minComplexity = Math.min(initialComplexity, 1.5);
-        if ((this.currentContract && this.currentContract.requireBacklogReduction && !this.state.backlogReduced) || this.state.complexity <= minComplexity) {
+        if ((this.isBacklogReductionPending()) || this.state.complexity <= minComplexity) {
           this.selectTask('idle');
         }
       } else if (this.state.activeTask === 'autotest') {
@@ -422,14 +431,14 @@ class DevGameEngine {
     }
 
     // Recalculate minLoc and complexity at the end of the tick
-    const growthScale = this.currentContract ? (this.currentContract.growthScale !== undefined ? this.currentContract.growthScale : 1443) : 1443;
-    const transitionOffset = this.currentContract ? (this.currentContract.transitionOffset !== undefined ? this.currentContract.transitionOffset : 9) : 9;
+    const growthScale = this.getContractConfig('growthScale', 1443);
+    const transitionOffset = this.getContractConfig('transitionOffset', 9);
     
     totalFeatures = this.currentContract ? Math.round(this.currentContract.backlog) : 0;
     completedFeatures = totalFeatures - this.state.featurePoints;
 
     if (this.state.loc <= 0) {
-      this.state.complexity = this.currentContract ? (this.currentContract.complexity || 1.0) : 1.0;
+      this.state.complexity = this.getContractConfig('complexity', 1.0);
     }
     
     this.state.minLoc = Formulas.getMinLoc(completedFeatures, growthScale, transitionOffset, this.state.complexity);
@@ -470,10 +479,10 @@ class DevGameEngine {
       if (task === 'code' && this.state.backlog <= 0) return false;
       if (task === 'bugfix' && this.state.revealedBugs <= 0) return false;
 
-      const difficulty = this.currentContract ? (this.currentContract.difficulty || (this.currentContract.isCourse ? 1.0 : 10.0)) : 10.0;
-      const baseBugRate = this.currentContract ? (this.currentContract.baseBugRate !== undefined ? this.currentContract.baseBugRate : 0.05) : 0.05;
-      const growthScale = this.currentContract ? (this.currentContract.growthScale !== undefined ? this.currentContract.growthScale : 1443) : 1443;
-      const transitionOffset = this.currentContract ? (this.currentContract.transitionOffset !== undefined ? this.currentContract.transitionOffset : 9) : 9;
+      const difficulty = this.getContractConfig('difficulty', this.getContractConfig('isCourse', false) ? 1.0 : 10.0);
+      const baseBugRate = this.getContractConfig('baseBugRate', 0.05);
+      const growthScale = this.getContractConfig('growthScale', 1443);
+      const transitionOffset = this.getContractConfig('transitionOffset', 9);
 
       let speedMultiplier = this.getCodingSpeedMultiplier();
       const locBaseSpeed = task === 'bugfix' ? Formulas.BASE_BUGFIX_SPEED : Formulas.BASE_CODE_SPEED;
@@ -500,7 +509,7 @@ class DevGameEngine {
           if (prevFloor === 0 && i === 0) {
             this.state.complexity = 1.5;
           } else {
-            const contractComplexity = this.currentContract ? (this.currentContract.complexity || 1.0) : 1.0;
+            const contractComplexity = this.getContractConfig('complexity', 1.0);
             this.state.complexity += Formulas.getComplexityIncrement(contractComplexity, this.state.loc);
           }
 
@@ -610,7 +619,7 @@ class DevGameEngine {
       this.state.loc -= refactorAmt;
       const f = this.state.loc / locOld;
       
-      const initialComplexity = this.currentContract ? (this.currentContract.complexity || 1.0) : 1.0;
+      const initialComplexity = this.getContractConfig('complexity', 1.0);
       const minComplexity = Math.min(initialComplexity, 1.5);
       this.state.complexity = Math.max(minComplexity, this.state.complexity * f);
 
@@ -634,8 +643,8 @@ class DevGameEngine {
 
   isShipReady() {
     if (!this.currentContract) return false;
-    const threshold = this.currentContract.backlogThreshold !== undefined ? this.currentContract.backlogThreshold : 1.0;
-    const reqTestCoverage = this.currentContract.requiredTestCoverage !== undefined ? this.currentContract.requiredTestCoverage : 0.0;
+    const threshold = this.getContractConfig('backlogThreshold', 1.0);
+    const reqTestCoverage = this.getContractConfig('requiredTestCoverage', 0.0);
     return this.state.backlog < threshold && this.state.revealedBugs < 1.0 && this.state.testCoverage >= reqTestCoverage;
   }
 
