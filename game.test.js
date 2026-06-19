@@ -235,13 +235,20 @@ describe('Solo Coder Game - UI Binding & Integration Tests', () => {
     document.dispatchEvent(domEvent);
 
     const overlay = document.getElementById('tutorial-overlay');
-    const text = document.getElementById('tutorial-text');
+    const title = document.getElementById('tutorial-title');
     const btn = document.getElementById('tutorial-action-btn');
 
-    // Overlay is initially visible
+    // Overlay is initially visible with Start Phase onboarding
     expect(overlay.style.display).not.toBe('none');
+    expect(title.textContent).toBe('Welcome to DevLoop!');
+    expect(btn.textContent).toBe('Play Tutorial');
 
-    // Click on action button
+    // Click "Play Tutorial" to transition to tutorial Course Intro
+    btn.click();
+    expect(title.textContent).toBe('Course Intro: Learn to Code Online');
+    expect(btn.textContent).toBe('Accept Hello World Project');
+
+    // Click "Accept Hello World Project" to start coding
     btn.click();
 
     // Overlay should now be hidden

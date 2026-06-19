@@ -1,16 +1,18 @@
 (function() {
   // Load phase data (supports both Node.js environment and browser globals)
-  let TUTORIAL_PHASE, DEVELOPER_PHASE, BUSINESS_PHASE, Formulas;
+  let TUTORIAL_PHASE, DEVELOPER_PHASE, BUSINESS_PHASE, Formulas, Events;
   if (typeof require !== 'undefined') {
     TUTORIAL_PHASE = require('./phase-tutorial.js');
     DEVELOPER_PHASE = require('./phase-developer.js');
     BUSINESS_PHASE = require('./phase-business.js');
     Formulas = require('./formulas.js');
+    Events = require('./events.js');
   } else {
     TUTORIAL_PHASE = window.TUTORIAL_PHASE;
     DEVELOPER_PHASE = window.DEVELOPER_PHASE;
     BUSINESS_PHASE = window.BUSINESS_PHASE;
     Formulas = window.Formulas;
+    Events = window.Events;
   }
 
 // Combine contract data and upgrades from phases
@@ -32,6 +34,11 @@ function generateProceduralContract(index) {
 class DevGameEngine {
   constructor(initialState = null) {
     this.listeners = {};
+    let initialStep = 0;
+    if (initialState && initialState.tutorialStep !== undefined) {
+      initialStep = initialState.tutorialStep;
+    }
+
     this.state = initialState || {
       xp: 0,
       cash: 0,
@@ -64,7 +71,7 @@ class DevGameEngine {
         autotest: 0
       },
       purchasedUpgrades: [],
-      tutorialStep: 0, // 0: Start popup, 1: Code course, 2: Test course, 3: Bugfix course, 4: Refactor course, 5: Autotest course, 6: Completed
+      tutorialCompleted: false,
       codeValue: 0,
       contractIndex: 0,
       bugIntroProgress: 0.0,
@@ -77,6 +84,22 @@ class DevGameEngine {
       initialBacklog: 0,
       backlogReduced: false
     };
+
+    if (this.state.tutorialCompleted === undefined) {
+      this.state.tutorialCompleted = (initialStep >= 6);
+    }
+
+    let _tutorialStep = this.state.tutorialCompleted ? 6.0 : initialStep;
+    Object.defineProperty(this.state, 'tutorialStep', {
+      get: () => _tutorialStep,
+      set: (val) => {
+        _tutorialStep = val;
+        this.state.tutorialCompleted = (val >= 6);
+        this.dispatchEvent(Events.TUTORIAL_STEP_CHANGED, val);
+      },
+      configurable: true,
+      enumerable: true
+    });
     
     // Ensure purchasedUpgrades is stored as an array in state for serialization compatibility,
     // but we can check it via array methods.
@@ -121,9 +144,18 @@ class DevGameEngine {
     this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
   }
 
+  listenOnce(event, callback) {
+    const onceWrapper = (data) => {
+      this.removeEventListener(event, onceWrapper);
+      callback(data);
+    };
+    this.addEventListener(event, onceWrapper);
+  }
+
   dispatchEvent(event, data) {
     if (!this.listeners[event]) return;
-    this.listeners[event].forEach(callback => {
+    const targets = [...this.listeners[event]];
+    targets.forEach(callback => {
       try {
         callback(data);
       } catch (err) {
@@ -134,6 +166,30 @@ class DevGameEngine {
 
   loadContract(index) {
     this.state.contractIndex = index;
+    
+    if (index === null || index === undefined || index < 0) {
+      this.currentContract = null;
+      this.state.featurePoints = 0;
+      this.state.bugPoints = 0;
+      this.state.backlog = 0;
+      this.state.loc = 0;
+      this.state.hiddenBugs = 0;
+      this.state.revealedBugs = 0;
+      this.state.complexity = 1.0;
+      this.state.manualTestFactor = 1.0;
+      this.state.minLoc = 0;
+      this.state.activeTask = 'idle';
+      this.state.initialBacklog = 0;
+      this.state.backlogReduced = false;
+      this.state.bugIntroProgress = 0.0;
+      this.state.revealedBugProgress = 0.0;
+      this.state.bugfixClearProgress = 0.0;
+      this.state.featureCompleteProgress = 0.0;
+      this.state.revealProgress = 0.0;
+      this.state.bugfixProgress = 0.0;
+      this.state.bugfixBacklogProgress = 0.0;
+      return;
+    }
     
     if (index < CONTRACTS.length) {
       this.currentContract = CONTRACTS[index];
@@ -287,7 +343,7 @@ class DevGameEngine {
         for (const threshold of thresholds) {
           if (prevComplexity < threshold && this.state.complexity >= threshold) {
             this.selectTask('idle');
-            this.dispatchEvent('complexityThresholdReached', { threshold });
+            this.dispatchEvent(Events.COMPLEXITY_THRESHOLD_REACHED, { threshold });
             break;
           }
         }
@@ -322,47 +378,47 @@ class DevGameEngine {
     const nextRank = this.getRank();
     if (prevRank !== nextRank) {
       this.rankUpFlag = nextRank;
-      this.dispatchEvent('rankUp', { rank: nextRank });
+      this.dispatchEvent(Events.RANK_UP, { rank: nextRank });
     }
 
     // Dispatch events based on state transitions
     const nextShippable = this.isShipReady();
     if (nextShippable && !prevShippable) {
-      this.dispatchEvent('shippable');
+      this.dispatchEvent(Events.SHIPPABLE);
     }
 
     const currentTotalBugs = Math.floor(this.state.hiddenBugs + this.state.revealedBugs);
     if (currentTotalBugs > prevTotalBugs) {
       for (let i = 0; i < currentTotalBugs - prevTotalBugs; i++) {
-        this.dispatchEvent('bugCreated');
+        this.dispatchEvent(Events.BUG_CREATED);
       }
     }
 
     const currentRevealedBugs = Math.floor(this.state.revealedBugs);
     if (currentRevealedBugs > prevRevealedBugs) {
       for (let i = 0; i < currentRevealedBugs - prevRevealedBugs; i++) {
-        this.dispatchEvent('bugRevealed');
+        this.dispatchEvent(Events.BUG_REVEALED);
       }
     }
 
     const currentBacklog = Math.floor(this.state.backlog);
     if (currentBacklog < prevBacklog) {
       for (let i = 0; i < prevBacklog - currentBacklog; i++) {
-        this.dispatchEvent('storyPointCompleted');
+        this.dispatchEvent(Events.STORY_POINT_COMPLETED);
       }
     }
 
     const currentLoc = Math.floor(this.state.loc);
     if (currentLoc > prevLoc) {
-      this.dispatchEvent('locWritten', { loc: this.state.loc });
+      this.dispatchEvent(Events.LOC_WRITTEN, { loc: this.state.loc });
     }
 
     if (this.state.testCoverage > prevCoverageFloat) {
-      this.dispatchEvent('testCoverageIncreased', { testCoverage: this.state.testCoverage });
+      this.dispatchEvent(Events.TEST_COVERAGE_INCREASED, { testCoverage: this.state.testCoverage });
     }
 
     if (this.state.testCoverageFloor > prevCoverageFloorFloat) {
-      this.dispatchEvent('testCoverageFloorIncreased', { testCoverageFloor: this.state.testCoverageFloor });
+      this.dispatchEvent(Events.TEST_COVERAGE_FLOOR_INCREASED, { testCoverageFloor: this.state.testCoverageFloor });
     }
 
     // Recalculate minLoc and complexity at the end of the tick
@@ -380,7 +436,7 @@ class DevGameEngine {
 
     this.state.backlog = this.state.featurePoints;
 
-    this.dispatchEvent('tick', { dt });
+    this.dispatchEvent(Events.TICK, { dt });
 
     return {
       focusVal,
@@ -607,6 +663,8 @@ class DevGameEngine {
     // Load next contract
     this.loadContract(this.state.contractIndex + 1);
 
+    this.dispatchEvent(Events.PROJECT_SHIPPED, report);
+
     return report;
   }
 
@@ -645,7 +703,7 @@ class DevGameEngine {
 
   getCodingSpeedMultiplier() {
     const rank = this.getRank();
-    const isTutorial = (this.state.tutorialStep < 6);
+    const isTutorial = !this.state.tutorialCompleted;
     const ranksList = isTutorial ? TUTORIAL_PHASE.ranks : DEVELOPER_PHASE.ranks;
     const matchedRank = ranksList.find(r => r.name === rank);
     const matchedSpeed = (matchedRank && matchedRank.speed !== undefined) ? matchedRank.speed : 1.0;
@@ -658,7 +716,7 @@ class DevGameEngine {
 
   getRank() {
     const xp = this.state.xp;
-    if (this.state.tutorialStep < 6) {
+    if (!this.state.tutorialCompleted) {
       const matchedRank = TUTORIAL_PHASE.ranks.find(r => xp < r.maxXP) || TUTORIAL_PHASE.ranks[TUTORIAL_PHASE.ranks.length - 1];
       return matchedRank.name;
     } else {
@@ -669,6 +727,7 @@ class DevGameEngine {
 
   skipTutorial() {
     this.state.purchasedUpgrades = ['oss-ide', 'install-linux', 'touch-typing', 'git-workflow'];
+    this.state.tutorialCompleted = true;
     this.state.tutorialStep = 6;
     this.state.cash = 10.0;
     this.state.xp = 0;

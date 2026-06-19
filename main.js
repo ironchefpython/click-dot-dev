@@ -1,7 +1,7 @@
 (function() {
   // Import dependencies for Node.js test environments
-  let DevGameEngine, CONTRACTS, TUTORIAL_PHASE, DEVELOPER_PHASE, BUSINESS_PHASE, Formulas;
-  let createLineGenerator, codeGrammar, testGrammar, bugfixGrammar, refactorGrammar, autotestGrammar;
+  let DevGameEngine, CONTRACTS, TUTORIAL_PHASE, DEVELOPER_PHASE, BUSINESS_PHASE, Formulas, Events;
+  let createLineGenerator, codeGrammar, testGrammar, bugfixGrammar, refactorGrammar, autotestGrammar, TutorialUI, UIUtils, START_PHASE, StartPhase;
 
   if (typeof require !== 'undefined') {
     const engineMod = require('./engine.js');
@@ -18,6 +18,12 @@
     bugfixGrammar = require('./grammar-bugfix.js');
     refactorGrammar = require('./grammar-refactor.js');
     autotestGrammar = require('./grammar-autotest.js');
+    
+    UIUtils = require('./ui-utils.js');
+    START_PHASE = require('./phase-start.js');
+    StartPhase = START_PHASE.StartPhase;
+    TutorialUI = TUTORIAL_PHASE.TutorialUI;
+    Events = require('./events.js');
   } else {
     DevGameEngine = window.DevGameEngine;
     CONTRACTS = window.CONTRACTS;
@@ -32,6 +38,12 @@
     bugfixGrammar = window.bugfixGrammar;
     refactorGrammar = window.refactorGrammar;
     autotestGrammar = window.autotestGrammar;
+    
+    UIUtils = window.UIUtils;
+    START_PHASE = window.START_PHASE;
+    StartPhase = window.StartPhase;
+    TutorialUI = window.TutorialUI;
+    Events = window.Events;
   }
 
   const codeLineGen = createLineGenerator(codeGrammar);
@@ -146,7 +158,42 @@ if (typeof window !== 'undefined') {
       purchasedUpgrades: cond.purchasedUpgrades ? [...cond.purchasedUpgrades] : [],
       tutorialStep: cond.tutorialStep !== undefined ? cond.tutorialStep : 0,
       codeValue: 0,
-      contractIndex: cond.contractIndex || 0,
+      contractIndex: cond.contractIndex !== undefined ? cond.contractIndex : 0,
+      bugIntroProgress: 0.0,
+      revealedBugProgress: 0.0,
+      bugfixClearProgress: 0.0,
+      featureCompleteProgress: 0.0,
+      revealProgress: 0.0,
+      bugfixProgress: 0.0,
+      bugfixBacklogProgress: 0.0
+    };
+  } else {
+    // Default starting state (onboarding phase)
+    initialGameState = {
+      xp: 0,
+      cash: 0,
+      loc: 0,
+      hiddenBugs: 0,
+      revealedBugs: 0,
+      backlog: 0,
+      featurePoints: 0,
+      bugPoints: 0,
+      testCoverage: 0,
+      testCoverageFloor: 0,
+      minLoc: 0,
+      complexity: 1.0,
+      manualTestFactor: 1.0,
+      activeTask: 'idle',
+      taskFatigue: {
+        idle: 0, code: 0, test: 0, bugfix: 0, refactor: 0, autotest: 0
+      },
+      taskTimeSpent: {
+        idle: 0, code: 0, test: 0, bugfix: 0, refactor: 0, autotest: 0
+      },
+      purchasedUpgrades: [],
+      tutorialStep: 0,
+      codeValue: 0,
+      contractIndex: -1, // No project active!
       bugIntroProgress: 0.0,
       revealedBugProgress: 0.0,
       bugfixClearProgress: 0.0,
@@ -159,7 +206,22 @@ if (typeof window !== 'undefined') {
 
   let engine = new DevGameEngine(initialGameState);
   window.engine = engine;
-  let refactorTimer = 0;
+
+  engine.addEventListener(Events.TUTORIAL_STEP_CHANGED, (step) => {
+    if (!TutorialUI.engine && step > 0) {
+      TutorialUI.init(engine, {
+        initializeProjectFiles,
+        logToConsole,
+        updateProjectUIHeader
+      });
+    }
+  });
+
+  const lockTaskButton = (task) => UIUtils.lockTaskButton(task);
+  const unlockTaskButton = (task) => UIUtils.unlockTaskButton(task);
+  const unlockAllTaskButtons = () => UIUtils.unlockAllTaskButtons();
+  const clearHighlights = () => UIUtils.clearHighlights();
+
   let terminalScrollTimer = 0;
   let lastUpgradesStateKey = '';
 
@@ -169,27 +231,11 @@ if (typeof window !== 'undefined') {
 
   // Initialize DOM bindings on DOMContentLoaded
   document.addEventListener("DOMContentLoaded", () => {
-    // Accept tutorial course button
-    document.getElementById("tutorial-action-btn").addEventListener("click", () => {
-      handleTutorialAction();
-    });
-
-    // Skip tutorial button
-    document.getElementById("tutorial-skip-btn").addEventListener("click", () => {
-      engine.skipTutorial();
-      document.getElementById("tutorial-overlay").style.display = 'none';
-      unlockAllTaskButtons();
-      clearHighlights();
-      updateProjectUIHeader();
-      initializeProjectFiles();
-      logToConsole("[SYSTEM] Tutorial skipped. Starting with $10 cash & Bakery Contract.", "success-msg");
-    });
-
     // Ship Project button
     document.getElementById("ship-project-btn").addEventListener("click", () => {
       let report = engine.shipProject();
       if (report) {
-        showShippingSplash(report);
+        TutorialUI.showShippingSplash(report);
       }
     });
 
@@ -224,7 +270,7 @@ if (typeof window !== 'undefined') {
         if (upg && engine.buyUpgrade(id)) {
           logToConsole(`[UPGRADE] Purchased: ${upg.name}`, 'success-msg');
           if (id === 'transition') {
-            triggerPhase2Transition();
+            TutorialUI.triggerPhase2Transition();
           }
           renderUpgradesList();
         }
@@ -233,7 +279,11 @@ if (typeof window !== 'undefined') {
 
     // Start UI updates
     updateProjectUIHeader();
-    syncTutorialButtonsUI();
+    if (TutorialUI.engine) {
+      TutorialUI.syncTutorialButtonsUI();
+    } else {
+      ['code', 'test', 'bugfix', 'refactor', 'autotest'].forEach(t => lockTaskButton(t));
+    }
 
     // File tree selection listeners
     document.querySelectorAll(".tree-item.file").forEach(fileEl => {
@@ -277,74 +327,19 @@ if (typeof window !== 'undefined') {
       }
     });
 
-    // If starting condition has UI implications, configure overlay popup
+    // Configure overlay popup based on starting condition or onboarding phase
     if (hashKey && startingConditions[hashKey]) {
-      const overlay = document.getElementById("tutorial-overlay");
-      const text = document.getElementById("tutorial-text");
-      const title = document.getElementById("tutorial-title");
-      const btn = document.getElementById("tutorial-action-btn");
-      const skipBtn = document.getElementById("tutorial-skip-btn");
+      // If a developer/freelance contract is loaded (starts with 'D')
+      if (hashKey.startsWith('D')) {
+        const overlay = document.getElementById("tutorial-overlay");
+        const text = document.getElementById("tutorial-text");
+        const title = document.getElementById("tutorial-title");
+        const btn = document.getElementById("tutorial-action-btn");
+        const skipBtn = document.getElementById("tutorial-skip-btn");
 
-      if (skipBtn) skipBtn.style.display = 'none';
-
-      if (hashKey === 'T1') {
-        if (overlay) overlay.style.display = 'none';
-        syncTutorialButtonsUI();
-        highlightTaskButton('code');
-      } else if (hashKey === 'T2') {
+        if (skipBtn) skipBtn.style.display = 'none';
         if (overlay) overlay.style.display = 'flex';
-        if (title) title.textContent = "Project Shipped: Hello World";
-        if (text) {
-          text.innerHTML = `
-            <p>Congratulations on shipping your <strong>Hello World</strong> project!</p>
-            <p style="margin-top: 10px;">Next up, let's accept the <strong>Calculator App</strong> contract to continue your training.</p>
-          `;
-        }
-        if (btn) {
-          btn.textContent = "Accept Calculator App";
-          btn.onclick = () => { handleTutorialAction(); };
-        }
-      } else if (hashKey === 'T3') {
-        if (overlay) overlay.style.display = 'flex';
-        if (title) title.textContent = "Project Shipped: Calculator App";
-        if (text) {
-          text.innerHTML = `
-            <p>Congratulations on shipping your <strong>Calculator App</strong>!</p>
-            <p style="margin-top: 10px;">Next up, accept the <strong>Todo List</strong> contract to learn about manual testing.</p>
-          `;
-        }
-        if (btn) {
-          btn.textContent = "Accept Todo List";
-          btn.onclick = () => { handleTutorialAction(); };
-        }
-      } else if (hashKey === 'T4') {
-        if (overlay) overlay.style.display = 'flex';
-        if (title) title.textContent = "Project Shipped: Todo List";
-        if (text) {
-          text.innerHTML = `
-            <p>Excellent testing! The <strong>Todo List</strong> project is shipped.</p>
-            <p style="margin-top: 10px;">Next up, accept the <strong>Weather App</strong> contract to learn about refactoring.</p>
-          `;
-        }
-        if (btn) {
-          btn.textContent = "Accept Weather App";
-          btn.onclick = () => { handleTutorialAction(); };
-        }
-      } else if (hashKey === 'T5') {
-        if (overlay) overlay.style.display = 'flex';
-        if (title) title.textContent = "Project Shipped: Weather App";
-        if (text) {
-          text.innerHTML = `
-            <p>Great refactoring! The <strong>Weather App</strong> project is shipped.</p>
-            <p style="margin-top: 10px;">Now, accept the <strong>Sample Ecommerce</strong> contract to set up automated testing.</p>
-          `;
-        }
-        if (btn) {
-          btn.textContent = "Accept Sample Ecommerce";
-          btn.onclick = () => { handleTutorialAction(); };
-        }
-      } else if (hashKey && hashKey.startsWith('D')) {
-        if (overlay) overlay.style.display = 'flex';
+        
         const contract = engine.currentContract;
         const titleText = contract ? contract.title : 'bakery-website';
         const backlogText = contract ? contract.backlog : 5;
@@ -359,7 +354,7 @@ if (typeof window !== 'undefined') {
         if (btn) {
           btn.textContent = `Accept ${titleText}`;
           btn.onclick = () => {
-            overlay.style.display = 'none';
+            if (overlay) overlay.style.display = 'none';
             unlockAllTaskButtons();
             clearHighlights();
             updateProjectUIHeader();
@@ -367,105 +362,31 @@ if (typeof window !== 'undefined') {
             logToConsole(`[SYSTEM] Loaded developer contract: ${titleText}. Backlog: ${backlogText} Points.`, 'success-msg');
           };
         }
+      } else {
+        // Tutorial start hashes (T1, T2, T3, T4, T5)
+        TutorialUI.init(engine, {
+          initializeProjectFiles,
+          logToConsole,
+          updateProjectUIHeader
+        });
       }
+    } else {
+      // No hash starting condition. Run StartPhase!
+      StartPhase.init(engine, {
+        initializeProjectFiles,
+        logToConsole,
+        updateProjectUIHeader,
+        onTutorialStart: () => {
+          TutorialUI.init(engine, {
+            initializeProjectFiles,
+            logToConsole,
+            updateProjectUIHeader
+          });
+        }
+      });
     }
 
-    // Setup event listeners for tutorial progression
-    engine.addEventListener('bugRevealed', () => {
-      const overlay = document.getElementById("tutorial-overlay");
-      const text = document.getElementById("tutorial-text");
-      const title = document.getElementById("tutorial-title");
-      const btn = document.getElementById("tutorial-action-btn");
-
-      if (engine.state.tutorialStep === 1.8 && engine.state.revealedBugs >= 1) {
-        engine.state.tutorialStep = 2.5;
-        overlay.style.display = 'flex';
-        title.textContent = "Unit 2: Bug Squashing";
-        text.innerHTML = `
-          <p>A compilation bug has appeared in your code!</p>
-          <p style="margin-top: 10px;">Bugs decrease the code value and block deployment. Select Bugfixing to resolve these known issues.</p>
-        `;
-        btn.textContent = "Start Bugfixing";
-        clearHighlights();
-      }
-    });
-
-    engine.addEventListener('bugCreated', () => {
-      const overlay = document.getElementById("tutorial-overlay");
-      const text = document.getElementById("tutorial-text");
-      const title = document.getElementById("tutorial-title");
-      const btn = document.getElementById("tutorial-action-btn");
-
-      if (engine.state.tutorialStep === 2.8 && engine.state.hiddenBugs >= 1) {
-        engine.state.tutorialStep = 3.5;
-        overlay.style.display = 'flex';
-        title.textContent = "Unit 3: Manual Verification";
-        text.innerHTML = `
-          <p>Bugs are now hidden in your backlog and cannot be seen directly!</p>
-          <p style="margin-top: 10px;">Select Manual Testing to check for failures and expose hidden bugs.</p>
-        `;
-        btn.textContent = "Begin Testing";
-        clearHighlights();
-      }
-    });
-
-    engine.addEventListener('locWritten', () => {
-      const overlay = document.getElementById("tutorial-overlay");
-      const text = document.getElementById("tutorial-text");
-      const title = document.getElementById("tutorial-title");
-      const btn = document.getElementById("tutorial-action-btn");
-
-      if (engine.state.tutorialStep === 3.8 && engine.state.complexity >= 3.0) {
-        engine.state.tutorialStep = 4.5;
-        overlay.style.display = 'flex';
-        title.textContent = "Unit 4: Code Refactoring";
-        text.innerHTML = `
-          <p>Complexity is high. Select Refactoring to clean up lines of code.</p>
-        `;
-        btn.textContent = "Refactor Code";
-        clearHighlights();
-      }
-    });
-
-    engine.addEventListener('testCoverageIncreased', () => {
-      const overlay = document.getElementById("tutorial-overlay");
-      const text = document.getElementById("tutorial-text");
-      const title = document.getElementById("tutorial-title");
-      const btn = document.getElementById("tutorial-action-btn");
-
-      if (engine.state.tutorialStep === 4.8 && engine.state.testCoverage >= 10) {
-        engine.state.tutorialStep = 5.5;
-        overlay.style.display = 'flex';
-        title.textContent = "Unit 5: Automation Suite";
-        text.innerHTML = `
-          <p>Let's write Automated Tests to lock in a quality safety floor.</p>
-        `;
-        btn.textContent = "Initialize Unit Tests";
-        clearHighlights();
-      }
-    });
-
-    const checkGraduate = () => {
-      const overlay = document.getElementById("tutorial-overlay");
-      const text = document.getElementById("tutorial-text");
-      const title = document.getElementById("tutorial-title");
-      const btn = document.getElementById("tutorial-action-btn");
-
-      if (engine.state.tutorialStep === 5 && engine.state.testCoverageFloor >= 10 && engine.isShipReady()) {
-        engine.state.tutorialStep = 6.5;
-        overlay.style.display = 'flex';
-        title.textContent = "Course Graduate! Ready for Freelance";
-        text.innerHTML = `
-          <p>Congratulations, you have graduated your course!</p>
-          <p style="margin-top: 10px;">You got your first freelance client contract: A bakery website. Let's start the real job! (+80 backlog, $10 starter funds)</p>
-        `;
-        btn.textContent = "Launch Workspace";
-        clearHighlights();
-      }
-    };
-
-    engine.addEventListener('shippable', checkGraduate);
-    engine.addEventListener('testCoverageFloorIncreased', checkGraduate);
+    // Tutorial progression event listeners are now managed by TutorialUI
 
     engine.addEventListener('shippable', () => {
       const times = engine.state.taskTimeSpent || { idle: 0, code: 0, test: 0, bugfix: 0, refactor: 0, autotest: 0 };
@@ -499,13 +420,7 @@ if (typeof window !== 'undefined') {
       logToConsole(`[COMPLEXITY WARNING] Complexity has reached "${word}" (${data.threshold.toFixed(1)})! Switching task to IDLE.`, 'error-msg');
     });
 
-    engine.addEventListener('tick', (data) => {
-      if (engine.state.tutorialStep === 4) {
-        if (engine.state.activeTask === 'refactor') {
-          refactorTimer += data.dt;
-        }
-      }
-    });
+
     
     // Main browser loop running at 20 ticks/sec
     setInterval(() => {
@@ -542,9 +457,14 @@ if (typeof window !== 'undefined') {
   });
 
   function updateProjectUIHeader() {
-    document.getElementById("header-project-name").textContent = engine.currentContract.title;
-    const folderName = engine.currentContract.folderName;
-    document.getElementById("sidebar-folder-name").textContent = folderName ? folderName.replace('📁 ', '📁\u00A0') : '';
+    if (engine.currentContract) {
+      document.getElementById("header-project-name").textContent = engine.currentContract.title;
+      const folderName = engine.currentContract.folderName;
+      document.getElementById("sidebar-folder-name").textContent = folderName ? folderName.replace('📁 ', '📁\u00A0') : '';
+    } else {
+      document.getElementById("header-project-name").textContent = "No Active Project";
+      document.getElementById("sidebar-folder-name").textContent = "📁 No Project Loaded";
+    }
   }
 
   function resetFileContents() {
@@ -1356,273 +1276,7 @@ if (typeof window !== 'undefined') {
     });
   }
 
-  // Tutorial popups sequencing
-  function handleTutorialAction() {
-    const overlay = document.getElementById("tutorial-overlay");
-    const text = document.getElementById("tutorial-text");
-    const title = document.getElementById("tutorial-title");
-    const btn = document.getElementById("tutorial-action-btn");
-    const skipBtn = document.getElementById("tutorial-skip-btn");
-
-    if (engine.state.tutorialStep === 0) {
-      engine.state.tutorialStep = 1;
-      overlay.style.display = 'none';
-      skipBtn.style.display = 'none';
-      syncTutorialButtonsUI();
-      highlightTaskButton('code');
-      initializeProjectFiles();
-      logToConsole("[SYSTEM] Course started: Hello World project. Click '💻 Code' to start.", "success-msg");
-    } 
-    
-    else if (engine.state.tutorialStep === 1.8) {
-      overlay.style.display = 'none';
-      syncTutorialButtonsUI();
-      highlightTaskButton('code');
-      initializeProjectFiles();
-      logToConsole("[SYSTEM] Project 2 loaded: Calculator App. Click '💻 Code' to start writing code.", "success-msg");
-    }
-    
-    else if (engine.state.tutorialStep === 2.5) {
-      engine.state.tutorialStep = 2;
-      overlay.style.display = 'none';
-      syncTutorialButtonsUI();
-      highlightTaskButton('bugfix');
-      logToConsole("[SYSTEM] Course Unit 2: Bugfixing. Click '🐛 Bugfix' to remove discovered bugs.", "success-msg");
-    } 
-    
-    else if (engine.state.tutorialStep === 2.8) {
-      overlay.style.display = 'none';
-      syncTutorialButtonsUI();
-      highlightTaskButton('code');
-      initializeProjectFiles();
-      logToConsole("[SYSTEM] Project 3 loaded: Todo List. Click '💻 Code' to start writing code.", "success-msg");
-    }
-    
-    else if (engine.state.tutorialStep === 3.5) {
-      engine.state.tutorialStep = 3;
-      overlay.style.display = 'none';
-      syncTutorialButtonsUI();
-      highlightTaskButton('test');
-      logToConsole("[SYSTEM] Course Unit 3: Testing. Click '🔬 Test' to expose hidden bugs.", "success-msg");
-    } 
-    
-    else if (engine.state.tutorialStep === 3.8) {
-      overlay.style.display = 'none';
-      syncTutorialButtonsUI();
-      highlightTaskButton('code');
-      initializeProjectFiles();
-      logToConsole("[SYSTEM] Project 4 loaded: Weather App. Click '💻 Code' to start writing code.", "success-msg");
-    }
-    
-    else if (engine.state.tutorialStep === 4.5) {
-      engine.state.tutorialStep = 4;
-      overlay.style.display = 'none';
-      syncTutorialButtonsUI();
-      highlightTaskButton('refactor');
-      logToConsole("[SYSTEM] Course Unit 4: Refactoring. Click '🔧 Refactor' to clean codebase.", "success-msg");
-    } 
-    
-    else if (engine.state.tutorialStep === 4.8) {
-      overlay.style.display = 'none';
-      syncTutorialButtonsUI();
-      highlightTaskButton('code');
-      initializeProjectFiles();
-      logToConsole("[SYSTEM] Project 5 loaded: Sample Ecommerce. Click '💻 Code' to start writing code.", "success-msg");
-    }
-    
-    else if (engine.state.tutorialStep === 5.5) {
-      engine.state.tutorialStep = 5;
-      overlay.style.display = 'none';
-      syncTutorialButtonsUI();
-      highlightTaskButton('autotest');
-      logToConsole("[SYSTEM] Course Unit 5: Automated Testing. Click '🤖 Unit Tests' to setup a floor.", "success-msg");
-    } 
-    
-    else if (engine.state.tutorialStep === 6.5) {
-      engine.state.tutorialStep = 6;
-      engine.state.cash = 10.0;
-      engine.state.xp = 0;
-      engine.loadContract(5);
-      overlay.style.display = 'none';
-      unlockAllTaskButtons();
-      clearHighlights();
-      updateProjectUIHeader();
-      initializeProjectFiles();
-      logToConsole("[SYSTEM] Course finished! Contract unlocked: Bakery Website.", "success-msg");
-    }
-  }
-
-  // checkTutorialProgression removed in favor of event listener implementation
-
-  function unlockTaskButton(task) {
-    const input = document.querySelector(`input[value="${task}"]`);
-    if (input && input.hasAttribute("disabled")) {
-      input.removeAttribute("disabled");
-    }
-    const label = document.getElementById(`label-${task}`);
-    if (label) label.classList.remove("locked");
-    
-    const fileEl = document.getElementById(`file-${task}`);
-    if (fileEl) {
-      fileEl.classList.remove("locked");
-      if (fileEl.textContent.includes("🔒 ")) {
-        fileEl.textContent = fileEl.textContent.replace("🔒 ", "📄 ");
-      }
-    }
-  }
-
-  function lockTaskButton(task) {
-    const input = document.querySelector(`input[value="${task}"]`);
-    if (input && !input.hasAttribute("disabled")) {
-      input.setAttribute("disabled", "true");
-    }
-    const label = document.getElementById(`label-${task}`);
-    if (label) label.classList.add("locked");
-    
-    const fileEl = document.getElementById(`file-${task}`);
-    if (fileEl) {
-      fileEl.classList.add("locked");
-      if (fileEl.textContent.includes("📄 ")) {
-        fileEl.textContent = fileEl.textContent.replace("📄 ", "🔒 ");
-      }
-    }
-  }
-
-  function syncTutorialButtonsUI() {
-    if (engine.state.tutorialStep < 6) {
-      ['code', 'test', 'bugfix', 'refactor', 'autotest'].forEach(t => lockTaskButton(t));
-      const step = engine.state.tutorialStep;
-      if (step >= 1) unlockTaskButton('code');
-      if (step >= 2) unlockTaskButton('bugfix');
-      if (step >= 3) unlockTaskButton('test');
-      if (step >= 4) unlockTaskButton('refactor');
-      if (step >= 5) unlockTaskButton('autotest');
-    } else {
-      unlockAllTaskButtons();
-    }
-  }
-
-  function unlockAllTaskButtons() {
-    ['code', 'test', 'bugfix', 'refactor', 'autotest'].forEach(t => unlockTaskButton(t));
-  }
-
-  function highlightTaskButton(task) {
-    const el = document.getElementById(`label-${task}`);
-    if (el) el.classList.add("highlight-btn");
-  }
-
-  function clearHighlights() {
-    document.querySelectorAll(".task-radio-btn").forEach((lbl) => {
-      lbl.classList.remove("highlight-btn");
-    });
-  }
-
-  function showShippingSplash(report) {
-    const overlay = document.getElementById("tutorial-overlay");
-    const text = document.getElementById("tutorial-text");
-    const title = document.getElementById("tutorial-title");
-    const btn = document.getElementById("tutorial-action-btn");
-    const skipBtn = document.getElementById("tutorial-skip-btn");
-
-    skipBtn.style.display = 'none';
-    overlay.style.display = 'flex';
-
-    if (report.title === 'hello-world') {
-      engine.state.tutorialStep = 1.8;
-      title.textContent = "Project Shipped: Hello World";
-      text.innerHTML = `
-        <p>Congratulations on shipping your <strong>Hello World</strong> project!</p>
-        <p style="margin-top: 10px;">Next up, let's accept the <strong>Calculator App</strong> contract to continue your training.</p>
-      `;
-      btn.textContent = "Accept Calculator App";
-      btn.onclick = () => {
-        handleTutorialAction();
-      };
-    } 
-    
-    else if (report.title === 'calculator-app') {
-      engine.state.tutorialStep = 2.8;
-      title.textContent = "Project Shipped: Calculator App";
-      text.innerHTML = `
-        <p>Congratulations on shipping your <strong>Calculator App</strong>!</p>
-        <p style="margin-top: 10px;">Next up, accept the <strong>Todo List</strong> contract to learn about manual testing.</p>
-      `;
-      btn.textContent = "Accept Todo List";
-      btn.onclick = () => {
-        handleTutorialAction();
-      };
-    } 
-    
-    else if (report.title === 'todo-list') {
-      engine.state.tutorialStep = 3.8;
-      title.textContent = "Project Shipped: Todo List";
-      text.innerHTML = `
-        <p>Excellent testing! The <strong>Todo List</strong> project is shipped.</p>
-        <p style="margin-top: 10px;">Next up, accept the <strong>Weather App</strong> contract to learn about refactoring.</p>
-      `;
-      btn.textContent = "Accept Weather App";
-      btn.onclick = () => {
-        handleTutorialAction();
-      };
-    } 
-    
-    else if (report.title === 'weather-app') {
-      engine.state.tutorialStep = 4.8;
-      title.textContent = "Project Shipped: Weather App";
-      text.innerHTML = `
-        <p>Great refactoring! The <strong>Weather App</strong> project is shipped.</p>
-        <p style="margin-top: 10px;">Now, accept the <strong>Sample Ecommerce</strong> contract to set up automated testing.</p>
-      `;
-      btn.textContent = "Accept Sample Ecommerce";
-      btn.onclick = () => {
-        handleTutorialAction();
-      };
-    }
-    
-    else {
-      title.textContent = "🎉 Project Successfully Shipped!";
-      text.innerHTML = `
-        <p>Contract "<strong>${report.title}</strong>" has been completed and deployed!</p>
-        <div style="margin: 12px 0; padding: 12px; background-color: var(--bg-sidebar); border-radius: 4px; font-family: 'Fira Code', monospace; font-size: 0.8rem; line-height: 1.6;">
-          <div>Code Size Shipped: ${report.loc} LOC</div>
-          <div>Code Payout Value: $${report.codeValue.toFixed(2)}</div>
-          <div>Contract Reward: +$${report.cashReward.toFixed(2)}</div>
-          <hr style="border-color: var(--border-color); margin: 6px 0;">
-          <div style="color: var(--color-code);">Total Cash Earned: +$${report.cashPayout.toFixed(2)}</div>
-          <div style="color: var(--color-autotest);">Total XP Gained: +${Math.floor(report.xpPayout)} XP</div>
-        </div>
-        <p>Ready for your next contract? We have a fresh backlog queue waiting for you.</p>
-      `;
-      btn.textContent = "Accept Next Contract";
-      btn.onclick = () => {
-        overlay.style.display = 'none';
-        updateProjectUIHeader();
-        initializeProjectFiles();
-        logToConsole(`[SYSTEM] Loaded new project: ${engine.currentContract.title}. Backlog: ${engine.currentContract.backlog} Points.`, 'success-msg');
-        btn.onclick = handleTutorialAction;
-      };
-    }
-  }
-
-  function triggerPhase2Transition() {
-    const overlay = document.getElementById("tutorial-overlay");
-    overlay.style.display = 'flex';
-    
-    const title = document.getElementById("tutorial-title");
-    title.textContent = "🚀 consultancy phase ready!";
-    
-    const text = document.getElementById("tutorial-text");
-    text.innerHTML = `
-      <p>You have successfully accumulated enough funds and code experience to establish: <strong>DevLoop Solutions Ltd.</strong></p>
-      <p style="margin-top: 10px;">Phase 1 (Solo Coder) is complete! In Phase 2, you will step away from the keyboard and hire staff developers and project managers to scale your operations.</p>
-    `;
-    
-    const btn = document.getElementById("tutorial-action-btn");
-    btn.textContent = "Transition to Phase 2 (Under Construction)";
-    btn.onclick = () => {
-      alert("Congratulations on completing Phase 1! The consultancy stage is currently under development. Stay tuned!");
-    };
-  }
+  
 
   function runAutoSimulationUI() {
     logToConsole("=======================================", "success-msg");
