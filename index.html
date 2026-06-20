@@ -8,241 +8,20 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+
+  <script type="importmap">
+    {
+      "imports": {
+        "preact": "https://esm.sh/preact@10.23.1",
+        "preact/hooks": "https://esm.sh/preact@10.23.1/hooks",
+        "htm/preact": "https://esm.sh/htm@3.1.1/preact?external=preact"
+      }
+    }
+  </script>
 </head>
+
 <body>
-  <div id="app-container">
-    <!-- Header -->
-    <header class="ide-header">
-      <div class="header-left">
-        <span class="app-icon">⚡</span>
-        <span class="project-title" id="header-project-name">learning-to-code</span>
-        <span class="file-path" id="header-file-path">/src/main.js</span>
-      </div>
-      <div class="header-right">
-        <!-- Mini stat pies: Focus / Fatigue / Efficiency -->
-        <div class="stat-pie-group">
-          <div class="stat-pie-badge" id="pie-focus-badge">
-            <span class="stat-pie" id="pie-focus" style="background: conic-gradient(#10b981 0%, #1e293b 0%)"></span>
-            <span class="stat-pie-label">Focus</span>
-            <span class="stat-pie-val" id="val-focus">0%</span>
-          </div>
-          <div class="stat-pie-sep"></div>
-          <div class="stat-pie-badge" id="pie-fatigue-badge">
-            <span class="stat-pie" id="pie-fatigue" style="background: conic-gradient(#ef4444 0%, #1e293b 0%)"></span>
-            <span class="stat-pie-label">Fatigue</span>
-            <span class="stat-pie-val" id="val-fatigue">0%</span>
-          </div>
-          <div class="stat-pie-sep"></div>
-          <div class="stat-pie-badge" id="pie-efficiency-badge">
-            <span class="stat-pie" id="pie-efficiency" style="background: conic-gradient(#a855f7 0%, #1e293b 0%)"></span>
-            <span class="stat-pie-label">Efficiency</span>
-            <span class="stat-pie-val" id="stat-efficiency">100%</span>
-          </div>
-        </div>
-        <div class="header-divider"></div>
-        <div class="xp-badge cash-badge">
-          <span class="xp-label">CASH:</span>
-          <span id="cash-counter" class="xp-value cash-value">$0.00</span>
-        </div>
-        <div class="xp-badge">
-          <span class="xp-label" id="xp-label">KNOWLEDGE:</span>
-          <span id="xp-counter" class="xp-value">0 XP</span>
-          <span id="xp-rate" class="xp-rate">(+0.0/s)</span>
-        </div>
-        <div class="xp-badge rank-badge">
-          <span class="xp-label">RANK:</span>
-          <span id="rank-value" class="xp-value rank-value">Coding Novice</span>
-        </div>
-      </div>
-    </header>
-
-    <!-- Main Workspace Grid -->
-    <div class="ide-body">
-      <!-- File Explorer Sidebar -->
-      <aside class="ide-sidebar">
-        <div class="sidebar-title">EXPLORER</div>
-        <div class="file-tree">
-          <div class="tree-item folder open">
-            <span class="chevron">▼</span> <span id="sidebar-folder-name">📁&nbsp;online_course</span>
-          </div>
-          <div class="tree-items">
-            <div id="file-main" class="tree-item file active">
-              📄 main.js <span class="loc-indicator" id="sidebar-loc">0 LOC</span>
-            </div>
-            <div id="file-test" class="tree-item file locked">
-              🔒 grammar-testing.js
-            </div>
-            <div id="file-bugfix" class="tree-item file locked">
-              🔒 bugfix.log
-            </div>
-            <div id="file-refactor" class="tree-item file locked">
-              🔒 refactor.diff
-            </div>
-            <div id="file-autotest" class="tree-item file locked">
-              🔒 jest.config.js
-            </div>
-          </div>
-          <!-- Game Folder -->
-          <div class="tree-item folder open">
-            <span class="chevron">▼</span> 🎮&nbsp;game
-          </div>
-          <div class="tree-items">
-            <div id="file-stats" class="tree-item file">
-              📄 stats.xls
-            </div>
-            <div id="file-upgrades" class="tree-item file">
-              🗄️ upgrades.db
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      <!-- Center Pane Stack (Editor on top, Terminal below) -->
-      <div class="ide-center-container">
-        <!-- Center Code Editor Pane -->
-        <main class="ide-editor">
-          <!-- Editor Tabs -->
-          <div class="editor-tabs" id="editor-tabs-container">
-            <!-- Rendered dynamically -->
-          </div>
-
-          <!-- Code Content -->
-          <div class="editor-content">
-            <div id="editor-code-view" class="code-editor-view">
-              <!-- Rendered dynamically -->
-            </div>
-          </div>
-        </main>
-
-        <!-- Console Pane -->
-        <section class="ide-console">
-          <div class="console-header">
-            <span>TERMINAL</span>
-          </div>
-          <div class="console-content">
-            <div id="console-output" class="code-terminal">
-              <div class="terminal-line system-msg">Initializing workspace...</div>
-              <div class="terminal-line system-msg">Run "npm run start" to begin.</div>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <!-- Right Dashboard Sidebar -->
-      <aside class="ide-dashboard">
-
-        <!-- Section: Project Value & Ship -->
-        <div class="dash-section">
-          <div class="code-value-card">
-            <div class="metric-label" id="project-value-label">CODEBASE VALUE</div>
-            <div id="stat-value" class="value-glowing">$0.00</div>
-            <button id="ship-project-btn" class="ship-btn" disabled>Ship Project</button>
-          </div>
-        </div>
-
-        <!-- Section: Task Selector -->
-        <div class="dash-section">
-          <div class="section-title">SELECT TASK</div>
-          <div class="task-radio-group sidebar-task-group">
-            <label class="task-radio-btn" id="label-idle">
-              <input type="radio" name="active-task" value="idle" checked>
-              <span class="radio-label">☕ Idle</span>
-            </label>
-            <label class="task-radio-btn locked" id="label-code">
-              <input type="radio" name="active-task" value="code" disabled>
-              <span class="radio-label">💻 Code</span>
-            </label>
-            <label class="task-radio-btn locked task-test" id="label-test">
-              <input type="radio" name="active-task" value="test" disabled>
-              <span class="radio-label">🔬 Test</span>
-            </label>
-            <label class="task-radio-btn locked task-bugfix" id="label-bugfix">
-              <input type="radio" name="active-task" value="bugfix" disabled>
-              <span class="radio-label">🐛 Bugfix</span>
-            </label>
-            <label class="task-radio-btn locked task-refactor" id="label-refactor">
-              <input type="radio" name="active-task" value="refactor" disabled>
-              <span class="radio-label">🔧 Refactor</span>
-            </label>
-            <label class="task-radio-btn locked task-autotest" id="label-autotest">
-              <input type="radio" name="active-task" value="autotest" disabled>
-              <span class="radio-label">🤖 Unit Tests</span>
-            </label>
-          </div>
-        </div>
-
-        <!-- Section: Metrics -->
-        <div class="dash-section">
-          <div class="section-title">CODEBASE METRICS</div>
-          <div class="metrics-grid">
-            <div class="metric-card">
-              <div class="metric-label">Code Size</div>
-              <div id="stat-loc" class="metric-value">0 LOC</div>
-              <div id="stat-loc-sub" class="metric-sub">Hidden bugs: -</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-label">Backlog</div>
-              <div id="stat-backlog" class="metric-value">0 Points</div>
-              <div id="stat-min-loc" class="metric-sub">Min LOC: -</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-label">Bugs</div>
-              <div class="metric-value">
-                <span id="stat-bugs-found" class="bug-revealed">0</span>
-              </div>
-              <div id="stat-bug-rate" class="metric-sub">Bug rate: 5.0%</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-label">Code Complexity</div>
-              <div id="stat-complexity" class="metric-value">elegant</div>
-              <div id="stat-complexity-sub" class="metric-sub">1.00x multiplier</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-label">Tested</div>
-              <div id="stat-coverage" class="metric-value">-</div>
-              <div class="progress-bar-container">
-                <div id="progress-coverage" class="progress-bar cyan" style="width: 0%;"></div>
-              </div>
-              <div id="stat-coverage-floor" class="metric-sub">Auto Floor: -</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-label">Code Coverage</div>
-              <div id="stat-coverage-floor-display" class="metric-value coverage-floor-value">-</div>
-              <div class="progress-bar-container">
-                <div id="progress-coverage-floor" class="progress-bar purple" style="width: 0%;"></div>
-              </div>
-              <div id="stat-coverage-floor-pct" class="metric-sub">Automated floor</div>
-            </div>
-          </div>
-        </div>
-
-
-        <!-- Section: Upgrades -->
-        <div class="dash-section flex-grow">
-          <div class="section-title">KNOWLEDGE UPGRADES</div>
-          <div id="upgrades-list" class="upgrades-list">
-            <div class="empty-upgrades">Finish tutorial to unlock upgrades.</div>
-          </div>
-        </div>
-      </aside>
-    </div>
-
-    <!-- Tutorial Box Overlay -->
-    <div id="tutorial-overlay" class="tutorial-overlay">
-      <div class="tutorial-box">
-        <h3 id="tutorial-title">Course Intro: Learn to Code Online</h3>
-        <div class="tutorial-body">
-          <p id="tutorial-text">
-            Welcome to your software development journey! Let's start by learning the basics of writing software. First, accept your "Hello World" project to start writing code.
-          </p>
-        </div>
-        <div class="tutorial-actions">
-          <button id="tutorial-action-btn" class="tutorial-btn">Accept Hello World Project</button>
-          <button id="tutorial-skip-btn" class="tutorial-btn secondary">Skip Tutorial</button>
-        </div>
-      </div>
-    </div>
-  </div>
+  <div id="app-container"></div>
 
   <script src="events.js"></script>
   <script src="ui-utils.js"></script>
@@ -258,6 +37,6 @@
   <script src="grammar-autotest.js"></script>
   <script src="grammar-testing.js"></script>
   <script src="linegen.js"></script>
-  <script src="main.js"></script>
+  <script type="module" src="main.js"></script>
 </body>
 </html>

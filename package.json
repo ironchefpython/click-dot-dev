@@ -9,11 +9,7 @@
   },
   "devDependencies": {
     "jest": "^30.4.2",
-    "jest-environment-jsdom": "^30.4.1"
-  },
-  "jest": {
-    "testMatch": [
-      "**/*.test.js"
-    ]
+    "jest-environment-jsdom": "^30.4.1",
+    "playwright": "^1.61.0"
   }
 }

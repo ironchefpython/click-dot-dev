@@ -9,97 +9,44 @@
 
   const UI_ELEMENTS = {};
 
+
   const UIUtils = {
     getEl(id) {
-      if (typeof document === 'undefined') return null;
-      if (!UI_ELEMENTS[id]) {
-        UI_ELEMENTS[id] = document.getElementById(id);
-      }
-      return UI_ELEMENTS[id];
+      return null; // Deprecated, managed by Preact
     },
 
     unlockTaskButton(task) {
-      if (typeof document === 'undefined') return;
-      const input = document.querySelector(`input[value="${task}"]`);
-      if (input && input.hasAttribute("disabled")) {
-        input.removeAttribute("disabled");
-      }
-      const label = document.getElementById(`label-${task}`);
-      if (label) label.classList.remove("locked");
-      
-      const fileEl = document.getElementById(`file-${task}`);
-      if (fileEl) {
-        fileEl.classList.remove("locked");
-        if (fileEl.textContent.includes("🔒 ")) {
-          fileEl.textContent = fileEl.textContent.replace("🔒 ", "📄 ");
-        }
-      }
+      // Deprecated, managed by Preact via engine state/tutorial rules
     },
 
     lockTaskButton(task) {
-      if (typeof document === 'undefined') return;
-      const input = document.querySelector(`input[value="${task}"]`);
-      if (input && !input.hasAttribute("disabled")) {
-        input.setAttribute("disabled", "true");
-      }
-      const label = document.getElementById(`label-${task}`);
-      if (label) label.classList.add("locked");
-      
-      const fileEl = document.getElementById(`file-${task}`);
-      if (fileEl) {
-        fileEl.classList.add("locked");
-        if (fileEl.textContent.includes("📄 ")) {
-          fileEl.textContent = fileEl.textContent.replace("📄 ", "🔒 ");
-        }
-      }
+      // Deprecated, managed by Preact via engine state/tutorial rules
     },
 
     unlockAllTaskButtons() {
-      ['code', 'test', 'bugfix', 'refactor', 'autotest'].forEach(t => UIUtils.unlockTaskButton(t));
+      // Deprecated, managed by Preact
     },
 
     highlightTaskButton(task) {
-      if (typeof document === 'undefined') return;
-      const el = document.getElementById(`label-${task}`);
-      if (el) el.classList.add("highlight-btn");
+      // Deprecated, managed by Preact
     },
 
     clearHighlights() {
-      if (typeof document === 'undefined') return;
-      document.querySelectorAll(".task-radio-btn").forEach((lbl) => {
-        lbl.classList.remove("highlight-btn");
-      });
+      // Deprecated, managed by Preact
     },
 
-    showModal(config) {
-      if (typeof document === 'undefined') return;
-      const overlay = document.getElementById("tutorial-overlay");
-      const text = document.getElementById("tutorial-text");
-      const title = document.getElementById("tutorial-title");
-      const btn = document.getElementById("tutorial-action-btn");
-      const skipBtn = document.getElementById("tutorial-skip-btn");
-
-      if (overlay) overlay.style.display = 'flex';
-      if (title && config.title !== undefined) title.textContent = config.title;
-      if (text && config.text !== undefined) text.innerHTML = config.text;
-      if (btn && config.btnText !== undefined) btn.textContent = config.btnText;
-      if (skipBtn) {
-        if (config.showSkip !== undefined) {
-          skipBtn.style.display = config.showSkip ? 'inline-block' : 'none';
+    showModal(config, engine) {
+        if (engine) {
+            engine.dispatchEvent(Events.SHOW_MODAL, config);
         }
-        if (config.skipText !== undefined) {
-          skipBtn.textContent = config.skipText;
+    },
+
+    hideModal(engine) {
+        if (engine) {
+            engine.dispatchEvent(Events.HIDE_MODAL);
         }
-      }
     },
-
-    hideModal() {
-      if (typeof document === 'undefined') return;
-      const overlay = document.getElementById("tutorial-overlay");
-      if (overlay) overlay.style.display = 'none';
-    },
-
-    createStateMachine(engine, options, states, stepToStateMap, defaultState) {
+createStateMachine(engine, options, states, stepToStateMap, defaultState) {
       const controller = {
         engine,
         options,
@@ -108,24 +55,6 @@
         activeListeners: [],
 
         init() {
-          // Register DOM event listeners
-          if (typeof document !== 'undefined') {
-            const actionBtn = document.getElementById("tutorial-action-btn");
-            if (actionBtn) {
-              actionBtn.onclick = () => {
-                this.handleActionClick();
-              };
-            }
-
-            const skipBtn = document.getElementById("tutorial-skip-btn");
-            if (skipBtn) {
-              skipBtn.onclick = () => {
-                this.handleSkipClick();
-              };
-            }
-          }
-
-          // Listen for step changes if stepToStateMap is provided
           if (stepToStateMap) {
             engine.addEventListener(Events.TUTORIAL_STEP_CHANGED, (step) => {
               const targetState = stepToStateMap[step];
@@ -225,11 +154,11 @@
             btnText: state.btnText,
             skipText: state.skipText,
             showSkip: state.showSkip
-          });
+          }, this.engine);
         },
 
         hideModal() {
-          UIUtils.hideModal();
+          UIUtils.hideModal(this.engine);
         },
 
         handleActionClick() {
@@ -242,20 +171,8 @@
 
         unlockTaskButton: UIUtils.unlockTaskButton,
         lockTaskButton: UIUtils.lockTaskButton,
-        syncTutorialButtonsUI() {
-          if (!this.engine.state.tutorialCompleted) {
-            ['code', 'test', 'bugfix', 'refactor', 'autotest'].forEach(t => this.lockTaskButton(t));
-            const state = states[this.currentStateName];
-            const step = state ? state.step : 0;
-            if (step >= 1) this.unlockTaskButton('code');
-            if (step >= 2) this.unlockTaskButton('bugfix');
-            if (step >= 3) this.unlockTaskButton('test');
-            if (step >= 4) this.unlockTaskButton('refactor');
-            if (step >= 5) this.unlockTaskButton('autotest');
-          } else {
-            UIUtils.unlockAllTaskButtons();
-          }
-        },
+        syncTutorialButtonsUI() {},
+
         unlockAllTaskButtons: UIUtils.unlockAllTaskButtons,
         highlightTaskButton: UIUtils.highlightTaskButton,
         clearHighlights: UIUtils.clearHighlights
