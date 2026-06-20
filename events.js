@@ -15,7 +15,9 @@
     PROJECT_SHIPPED: 'projectShipped',
 
     // UI Events
-    MODAL_BUTTON: 'modalButton'
+    MODAL_BUTTON: 'modalButton',
+    SHOW_MODAL: 'showModal',
+    HIDE_MODAL: 'hideModal'
   };
 
   if (typeof module !== 'undefined' && module.exports) {
