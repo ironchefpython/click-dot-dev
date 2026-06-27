@@ -204,6 +204,9 @@ const TUTORIAL_STATES = {
     step: 1,
     onEnter(ui) {
       ui.hideModal();
+      if (ui.engine.state.contractIndex !== 0) {
+        ui.engine.loadContract(0);
+      }
       ui.syncTutorialButtonsUI();
       ui.highlightTaskButton('code');
       if (ui.options.initializeProjectFiles) ui.options.initializeProjectFiles();
@@ -233,6 +236,9 @@ const TUTORIAL_STATES = {
     step: 1.8,
     onEnter(ui) {
       ui.hideModal();
+      if (ui.engine.state.contractIndex !== 1) {
+        ui.engine.loadContract(1);
+      }
       ui.syncTutorialButtonsUI();
       ui.highlightTaskButton('code');
       if (ui.options.initializeProjectFiles) ui.options.initializeProjectFiles();
@@ -289,6 +295,9 @@ const TUTORIAL_STATES = {
     step: 2.8,
     onEnter(ui) {
       ui.hideModal();
+      if (ui.engine.state.contractIndex !== 2) {
+        ui.engine.loadContract(2);
+      }
       ui.syncTutorialButtonsUI();
       ui.highlightTaskButton('code');
       if (ui.options.initializeProjectFiles) ui.options.initializeProjectFiles();
@@ -345,6 +354,9 @@ const TUTORIAL_STATES = {
     step: 3.8,
     onEnter(ui) {
       ui.hideModal();
+      if (ui.engine.state.contractIndex !== 3) {
+        ui.engine.loadContract(3);
+      }
       ui.syncTutorialButtonsUI();
       ui.highlightTaskButton('code');
       if (ui.options.initializeProjectFiles) ui.options.initializeProjectFiles();
@@ -400,6 +412,9 @@ const TUTORIAL_STATES = {
     step: 4.8,
     onEnter(ui) {
       ui.hideModal();
+      if (ui.engine.state.contractIndex !== 4) {
+        ui.engine.loadContract(4);
+      }
       ui.syncTutorialButtonsUI();
       ui.highlightTaskButton('code');
       if (ui.options.initializeProjectFiles) ui.options.initializeProjectFiles();

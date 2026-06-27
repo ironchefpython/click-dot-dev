@@ -142,6 +142,7 @@ class DevGameEngine {
   }
 
   addEventListener(event, callback) {
+    console.log('[EVENT] addEventListener:', event);
     if (!this.listeners[event]) {
       this.listeners[event] = [];
     }
@@ -162,6 +163,7 @@ class DevGameEngine {
   }
 
   dispatchEvent(event, data) {
+    console.log('[EVENT] dispatchEvent:', event, 'listeners count:', this.listeners[event] ? this.listeners[event].length : 0);
     if (!this.listeners[event]) return;
     const targets = [...this.listeners[event]];
     targets.forEach(callback => {

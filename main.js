@@ -162,20 +162,7 @@ function generateUpgradesContent(state) {
 }
 
 const App = () => {
-    const [state, setState] = useState(null);
-    const [tickData, setTickData] = useState({ focusVal: 0, fatigueVal: 0, efficiency: 1 });
-    const [openTabs, setOpenTabs] = useState(['main.js']);
-    const [activeTab, setActiveTab] = useState('main.js');
-    const [consoleOutput, setConsoleOutput] = useState([
-        { text: "Initializing workspace...", className: "system-msg" },
-        { text: "Run 'npm run start' to begin.", className: "system-msg" }
-    ]);
-    const [modalConfig, setModalConfig] = useState(null);
-    const [folderOpen, setFolderOpen] = useState(true);
-
-    const terminalScrollTimerRef = useRef(0);
-    
-    useEffect(() => {
+    const [state, setState] = useState(() => {
         const startingConditions = {
             ...(TUTORIAL_PHASE ? TUTORIAL_PHASE.startingConditions : {}),
             ...(DEVELOPER_PHASE ? DEVELOPER_PHASE.startingConditions : {})
@@ -199,11 +186,49 @@ const App = () => {
         engineInstance = engine;
         window.engine = engine;
 
-        const onShowModal = (config) => setModalConfig(config);
+        return { ...engine.state, currentContract: engine.currentContract, rank: engine.getRank(), isShipReady: engine.isShipReady() };
+    });
+    const [tickData, setTickData] = useState({ focusVal: 0, fatigueVal: 0, efficiency: 1 });
+    const [openTabs, setOpenTabs] = useState(['main.js']);
+    const [activeTab, setActiveTab] = useState('main.js');
+    const [consoleOutput, setConsoleOutput] = useState([
+        { text: "Initializing workspace...", className: "system-msg" },
+        { text: "Run 'npm run start' to begin.", className: "system-msg" }
+    ]);
+    const [modalConfig, setModalConfig] = useState(null);
+    const [folderOpen, setFolderOpen] = useState(true);
+
+    const terminalScrollTimerRef = useRef(0);
+    
+    useEffect(() => {
+        const engine = engineInstance;
+        const hashKey = window.location.hash ? window.location.hash.substring(1) : '';
+
+        // Wrap dispatchEvent to sync state automatically on any event
+        const originalDispatchEvent = engine.dispatchEvent;
+        engine.dispatchEvent = function(event, data) {
+            const res = originalDispatchEvent.call(this, event, data);
+            syncState();
+            return res;
+        };
+
+        const onShowModal = (config) => {
+            console.log('onShowModal called with:', config ? config.title : 'null');
+            setModalConfig(config);
+        };
         const onHideModal = () => setModalConfig(null);
 
         engine.addEventListener(Events.SHOW_MODAL, onShowModal);
         engine.addEventListener(Events.HIDE_MODAL, onHideModal);
+        engine.addEventListener(Events.TUTORIAL_STEP_CHANGED, (step) => {
+            if (!TutorialUI.engine && step > 0) {
+                TutorialUI.init(engine, {
+                    initializeProjectFiles,
+                    logToConsole: pushConsole,
+                    updateProjectUIHeader: () => {}
+                });
+            }
+        });
         engine.addEventListener(Events.COMPLEXITY_THRESHOLD_REACHED, (data) => {
              const words = { 3.0: "complicated", 3.5: "convoluted", 4.0: "tortuous", 4.5: "byzantine", 5.0: "job security", 5.5: "WTF", 6.0: "WTF?!?!!!!", 6.5: "OMGWTFBBQ" };
              const word = words[data.threshold] || "unknown";
@@ -220,7 +245,20 @@ const App = () => {
              pushConsole(`  - Unit Tests: ${times.autotest.toFixed(2)}s`, 'system-msg');
         });
 
+        const initializeProjectFiles = () => {
+            Object.keys(FILES_DEF).forEach(k => {
+                FILES_CONTENT[k] = { content: [], totalGenerated: 0 };
+            });
+            setOpenTabs(['main.js']);
+            setActiveTab('main.js');
+        };
+
         const initGameStart = () => {
+             const options = {
+                 initializeProjectFiles,
+                 logToConsole: pushConsole,
+                 updateProjectUIHeader: () => {}
+             };
              if (hashKey && hashKey.startsWith('D')) {
                   const contract = engine.currentContract;
                   const titleText = contract ? contract.title : 'bakery-website';
@@ -235,10 +273,11 @@ const App = () => {
                       }
                   });
              } else if (hashKey) {
-                 TutorialUI.init(engine);
+                 TutorialUI.init(engine, options);
              } else {
                  StartPhase.init(engine, {
-                    onTutorialStart: () => TutorialUI.init(engine)
+                    ...options,
+                    onTutorialStart: () => TutorialUI.init(engine, options)
                  });
              }
         };
@@ -300,6 +339,12 @@ const App = () => {
         FILES_CONTENT['upgrades.db'].content = generateUpgradesContent(s);
     };
 
+    const syncState = () => {
+        if (engineInstance) {
+            setState({ ...engineInstance.state, currentContract: engineInstance.currentContract, rank: engineInstance.getRank(), isShipReady: engineInstance.isShipReady() });
+        }
+    };
+
     const selectTask = (task) => {
         if (!engineInstance) return;
         engineInstance.selectTask(task);
@@ -309,6 +354,7 @@ const App = () => {
             setActiveTab(fileName);
         }
         pushConsole(`>>> Switching context to: ${task.toUpperCase()}...`, 'system-msg');
+        syncState();
     };
 
     if (!state) return html`<div>Loading...</div>`;
@@ -342,13 +388,15 @@ const App = () => {
                 if (id === 'transition') TutorialUI.triggerPhase2Transition();
             }
         }
+        syncState();
     };
 
+    console.log('App render, tutorialStep:', state.tutorialStep, 'backlog:', state.backlog, 'modalConfig:', modalConfig);
     return html`
       <header class="ide-header">
         <div class="header-left">
           <span class="app-icon">⚡</span>
-          <span class="project-title">${projectName}</span>
+          <span id="header-project-name" class="project-title">${projectName}</span>
           <span class="file-path">${FILES_DEF[activeTab] ? FILES_DEF[activeTab].path : ''}</span>
         </div>
         <div class="header-right">
@@ -510,11 +558,11 @@ const App = () => {
               <div class="metric-card">
                 <div class="metric-label">Backlog</div>
                 <div class="metric-value"><span class="feat-backlog">${Math.floor(state.featurePoints)}</span><span style="font-size: 0.8rem; color: var(--color-muted); font-weight: normal; margin-left: 2px;">Pts</span></div>
-                <div class="metric-sub">Min LOC: ${state.currentContract ? `${state.minLoc.toFixed(1)} (${(Formulas.calculateFeatureCompleteProb(state.currentContract, state.currentContract.isCourse ? 1.0 : 10.0, state.complexity) * 100).toFixed(1)}% chance)` : '-'}</div>
+                <div id="stat-min-loc" class="metric-sub">Min LOC: ${state.currentContract ? `${state.minLoc.toFixed(1)} (${(Formulas.calculateFeatureCompleteProb(state.currentContract, state.currentContract.difficulty || (state.currentContract.isCourse ? 1.0 : 10.0), state.complexity) * 100).toFixed(1)}% chance)` : '-'}</div>
               </div>
               <div class="metric-card">
                 <div class="metric-label">Bugs</div>
-                <div class="metric-value"><span class="bug-revealed">${state.tutorialStep < 1.8 ? '-' : Math.floor(state.revealedBugs)}</span></div>
+                <div class="metric-value"><span id="stat-bugs-found" class="bug-revealed">${state.tutorialStep < 1.8 ? '-' : Math.floor(state.revealedBugs)}</span></div>
                 <div class="metric-sub">Bug rate: ${state.tutorialStep < 1.8 ? '-' : `${(() => {const baseBugRate = engineInstance ? engineInstance.getContractConfig('baseBugRate', 0.05) : 0.05;
                     const compMult = state.complexity * (1 + (state.loc / 450) * (state.purchasedUpgrades.includes('framework') ? 0.7 : 1.0));
                     const linterRed = state.purchasedUpgrades.includes('linter') ? 0.6 : 1.0;
@@ -546,7 +594,7 @@ const App = () => {
               </div>
               <div class="metric-card">
                 <div class="metric-label">Tested</div>
-                <div class="metric-value">${state.tutorialStep < 2.8 ? '-' : `${state.testCoverage.toFixed(1)}%`}</div>
+                <div id="stat-coverage" class="metric-value">${state.tutorialStep < 2.8 ? '-' : `${state.testCoverage.toFixed(1)}%`}</div>
                 <div class="progress-bar-container"><div class="progress-bar cyan" style="width: ${state.tutorialStep < 2.8 ? 0 : state.testCoverage}%"></div></div>
                 <div class="metric-sub">Auto Floor: ${state.tutorialStep < 2.8 ? '-' : `${Math.floor(state.testCoverageFloor)}%`}</div>
               </div>
@@ -560,7 +608,7 @@ const App = () => {
           </div>
           <div class="dash-section flex-grow">
             <div class="section-title">KNOWLEDGE UPGRADES</div>
-            <div class="upgrades-list">
+            <div id="upgrades-list" class="upgrades-list">
               ${(() => {
                   if (state.tutorialStep < 6) {
                       const available = TUTORIAL_PHASE.upgrades.filter(u => state.contractIndex >= u.unlocksAfterProject);
@@ -599,25 +647,25 @@ const App = () => {
         </aside>
       </div>
 
-      ${modalConfig ? html`
-        <div class="tutorial-overlay" style="display: flex;">
+      <div id="tutorial-overlay" class="tutorial-overlay" style="display: ${modalConfig ? 'flex' : 'none'};">
+        ${modalConfig ? html`
           <div class="tutorial-box">
-            <h3>${modalConfig.title}</h3>
+            <h3 id="tutorial-title">${modalConfig.title}</h3>
             <div class="tutorial-body" dangerouslySetInnerHTML=${{__html: modalConfig.text}}></div>
             <div class="tutorial-actions">
-              <button class="tutorial-btn" onClick=${() => {
+              <button id="tutorial-action-btn" class="tutorial-btn" onClick=${() => {
                   if (modalConfig.onAction) modalConfig.onAction();
                   else engineInstance.dispatchEvent(Events.MODAL_BUTTON, { buttonId: 'action' });
               }}>${modalConfig.btnText}</button>
               ${modalConfig.showSkip !== false ? html`
-                <button class="tutorial-btn secondary" onClick=${() => {
+                <button id="tutorial-skip-btn" class="tutorial-btn secondary" onClick=${() => {
                     engineInstance.dispatchEvent(Events.MODAL_BUTTON, { buttonId: 'skip' });
                 }}>${modalConfig.skipText || 'Skip Tutorial'}</button>
               ` : ''}
             </div>
           </div>
-        </div>
-      ` : ''}
+        ` : ''}
+      </div>
     `;
 };
 

@@ -213,23 +213,89 @@ describe('Solo Coder Game - Core Engine Tests', () => {
   });
 });
 
-describe.skip('Solo Coder Game - UI Binding & Integration Tests', () => {
+describe('Solo Coder Game - UI Binding & Integration Tests', () => {
+  let originalClick, originalDispatch, originalEventTargetDispatch, originalAdvance;
+  let act;
+
   beforeEach(() => {
     activeIntervals.forEach(id => clearInterval(id));
     activeIntervals.length = 0;
     // Reset DOM modules and JSDOM document state for each test
     jest.resetModules();
 
+    act = require('preact/test-utils').act;
+
     // Load actual index.html content into JSDOM body
     const html = fs.readFileSync(path.resolve(__dirname, 'index.html'), 'utf8');
     // Strip script tags to prevent duplicate imports in JSDOM
     const cleanHtml = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
     document.documentElement.innerHTML = cleanHtml;
+
+    // Setup window globals for main.js in JSDOM
+    window.Events = require('./events.js');
+    window.DevGameEngine = require('./engine.js').DevGameEngine;
+    window.Formulas = require('./formulas.js');
+    const tutorialPhase = require('./phase-tutorial.js');
+    window.TUTORIAL_PHASE = tutorialPhase;
+    window.TutorialUI = tutorialPhase.TutorialUI;
+    window.DEVELOPER_PHASE = require('./phase-developer.js');
+    window.BUSINESS_PHASE = require('./phase-business.js');
+    window.StartPhase = require('./phase-start.js').StartPhase;
+    window.createLineGenerator = require('./linegen.js');
+    window.codeGrammar = require('./grammar-code.js');
+    window.testGrammar = require('./grammar-testing.js');
+    window.bugfixGrammar = require('./grammar-bugfix.js');
+    window.refactorGrammar = require('./grammar-refactor.js');
+    window.autotestGrammar = require('./grammar-autotest.js');
+
+    // Patch methods to run inside Preact act()
+    originalClick = HTMLElement.prototype.click;
+    HTMLElement.prototype.click = function(...args) {
+      let result;
+      act(() => {
+        result = originalClick.apply(this, args);
+      });
+      return result;
+    };
+
+    originalDispatch = document.dispatchEvent;
+    document.dispatchEvent = function(...args) {
+      let result;
+      act(() => {
+        result = originalDispatch.apply(this, args);
+      });
+      return result;
+    };
+
+    originalEventTargetDispatch = EventTarget.prototype.dispatchEvent;
+    EventTarget.prototype.dispatchEvent = function(...args) {
+      let result;
+      act(() => {
+        result = originalEventTargetDispatch.apply(this, args);
+      });
+      return result;
+    };
+
+    originalAdvance = jest.advanceTimersByTime;
+    jest.advanceTimersByTime = function(...args) {
+      let result;
+      act(() => {
+        result = originalAdvance.apply(this, args);
+      });
+      return result;
+    };
+  });
+
+  afterEach(() => {
+    if (originalClick) HTMLElement.prototype.click = originalClick;
+    if (originalDispatch) document.dispatchEvent = originalDispatch;
+    if (originalEventTargetDispatch) EventTarget.prototype.dispatchEvent = originalEventTargetDispatch;
+    if (originalAdvance) jest.advanceTimersByTime = originalAdvance;
   });
 
   test('should display tutorial overlay initially and advance step on click', () => {
     // Require main.js which sets up event listeners
-    require('./main.js');
+    act(() => { require('./main.js'); });
 
     const domEvent = new Event('DOMContentLoaded');
     document.dispatchEvent(domEvent);
@@ -262,7 +328,7 @@ describe.skip('Solo Coder Game - UI Binding & Integration Tests', () => {
   });
 
   test('should skip tutorial and unlock all tasks', () => {
-    require('./main.js');
+    act(() => { require('./main.js'); });
 
     const domEvent = new Event('DOMContentLoaded');
     document.dispatchEvent(domEvent);
@@ -275,10 +341,15 @@ describe.skip('Solo Coder Game - UI Binding & Integration Tests', () => {
     // Overlay hidden
     expect(overlay.style.display).toBe('none');
 
-    // All inputs should be enabled
+    // Check that tasks are not locked by tutorial step constraints.
+    // (test, bugfix and refactor are disabled due to current codebase stats: backlog reduction pending, zero bugs, and minimum complexity).
     const inputs = document.querySelectorAll('input[name="active-task"]');
     inputs.forEach(input => {
-      expect(input.hasAttribute('disabled')).toBe(false);
+      if (['code', 'autotest', 'idle'].includes(input.value)) {
+        expect(input.hasAttribute('disabled')).toBe(false);
+      } else {
+        expect(input.hasAttribute('disabled')).toBe(true);
+      }
     });
 
     // Check project header loaded Bakery Website
@@ -288,7 +359,7 @@ describe.skip('Solo Coder Game - UI Binding & Integration Tests', () => {
 
   test('should populate upgrades sidebar when tutorial is completed', () => {
     jest.useFakeTimers();
-    require('./main.js');
+    act(() => { require('./main.js'); });
 
     const domEvent = new Event('DOMContentLoaded');
     document.dispatchEvent(domEvent);
@@ -308,7 +379,7 @@ describe.skip('Solo Coder Game - UI Binding & Integration Tests', () => {
 
   test('should unlock, render, purchase, and apply effects for tutorial upgrades', () => {
     jest.useFakeTimers();
-    require('./main.js');
+    act(() => { require('./main.js'); });
 
     const domEvent = new Event('DOMContentLoaded');
     document.dispatchEvent(domEvent);
@@ -361,7 +432,7 @@ describe.skip('Solo Coder Game - UI Binding & Integration Tests', () => {
 
   test('should blank out bugs and test coverage UI metrics in early tutorial steps', () => {
     jest.useFakeTimers();
-    require('./main.js');
+    act(() => { require('./main.js'); });
 
     const domEvent = new Event('DOMContentLoaded');
     document.dispatchEvent(domEvent);
@@ -381,7 +452,7 @@ describe.skip('Solo Coder Game - UI Binding & Integration Tests', () => {
 
   test('should unlock bugfix task at step 2 when the first bug is introduced', () => {
     jest.useFakeTimers();
-    require('./main.js');
+    act(() => { require('./main.js'); });
 
     const domEvent = new Event('DOMContentLoaded');
     document.dispatchEvent(domEvent);
@@ -416,10 +487,10 @@ describe.skip('Solo Coder Game - UI Binding & Integration Tests', () => {
     // Verify overlay appears for Unit 2
     const overlay = document.getElementById('tutorial-overlay');
     expect(overlay.style.display).not.toBe('none');
-    expect(actionBtn.textContent).toBe('Start Bugfixing');
+    expect(document.getElementById('tutorial-action-btn').textContent).toBe('Start Bugfixing');
 
     // Click "Start Bugfixing" -> tutorialStep becomes 2
-    actionBtn.click();
+    document.getElementById('tutorial-action-btn').click();
     jest.advanceTimersByTime(50);
 
     // Verify code and bugfix are unlocked, test remains locked
@@ -432,7 +503,7 @@ describe.skip('Solo Coder Game - UI Binding & Integration Tests', () => {
 
   test('should unlock test task at step 3 when a hidden bug is introduced', () => {
     jest.useFakeTimers();
-    require('./main.js');
+    act(() => { require('./main.js'); });
 
     const domEvent = new Event('DOMContentLoaded');
     document.dispatchEvent(domEvent);
@@ -442,7 +513,7 @@ describe.skip('Solo Coder Game - UI Binding & Integration Tests', () => {
     window.engine.state.tutorialStep = 2.8;
     window.engine.state.loc = 0.0;
     window.engine.state.hiddenBugs = 0;
-    window.engine.state.revealedBugs = 0;
+    window.engine.state.revealedBugs = 1; // Needs to be > 0.05 to enable bugfix task button in Preact UI
     window.engine.state.testCoverage = 0.0;
     window.engine.state.testCoverageFloor = 0.0;
 
@@ -469,10 +540,10 @@ describe.skip('Solo Coder Game - UI Binding & Integration Tests', () => {
     // Verify overlay appears for Unit 3
     const overlay = document.getElementById('tutorial-overlay');
     expect(overlay.style.display).not.toBe('none');
-    expect(actionBtn.textContent).toBe('Begin Testing');
+    expect(document.getElementById('tutorial-action-btn').textContent).toBe('Begin Testing');
 
     // Click "Begin Testing" -> tutorialStep becomes 3
-    actionBtn.click();
+    document.getElementById('tutorial-action-btn').click();
     jest.advanceTimersByTime(50);
 
     // Verify test is now unlocked
@@ -483,7 +554,7 @@ describe.skip('Solo Coder Game - UI Binding & Integration Tests', () => {
 
   test('should disable code button in UI when backlog is empty', () => {
     jest.useFakeTimers();
-    require('./main.js');
+    act(() => { require('./main.js'); });
 
     const domEvent = new Event('DOMContentLoaded');
     document.dispatchEvent(domEvent);
@@ -516,7 +587,7 @@ describe.skip('Solo Coder Game - UI Binding & Integration Tests', () => {
 
   test('should disable bugfix button in UI when there are zero found bugs', () => {
     jest.useFakeTimers();
-    require('./main.js');
+    act(() => { require('./main.js'); });
 
     const domEvent = new Event('DOMContentLoaded');
     document.dispatchEvent(domEvent);
@@ -543,7 +614,7 @@ describe.skip('Solo Coder Game - UI Binding & Integration Tests', () => {
   test('should load starting state T3 from URL hash fragment', () => {
     window.location.hash = '#T3';
     jest.useFakeTimers();
-    require('./main.js');
+    act(() => { require('./main.js'); });
 
     const domEvent = new Event('DOMContentLoaded');
     document.dispatchEvent(domEvent);
@@ -566,7 +637,7 @@ describe.skip('Solo Coder Game - UI Binding & Integration Tests', () => {
   test('should load starting state D1 from URL hash fragment and prompt to accept bakery', () => {
     window.location.hash = '#D1';
     jest.useFakeTimers();
-    require('./main.js');
+    act(() => { require('./main.js'); });
 
     const domEvent = new Event('DOMContentLoaded');
     document.dispatchEvent(domEvent);
@@ -598,7 +669,7 @@ describe.skip('Solo Coder Game - UI Binding & Integration Tests', () => {
 
   test('should display the feature complete percentage next to Min LOC in backlog subtext when contract is active', () => {
     jest.useFakeTimers();
-    require('./main.js');
+    act(() => { require('./main.js'); });
 
     const domEvent = new Event('DOMContentLoaded');
     document.dispatchEvent(domEvent);
